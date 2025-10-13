@@ -1,0 +1,17 @@
+ezdxf
+fonttools
+munkres==1.1.4
+numpy
+packaging
+ply
+pyparsing
+PyQt5==5.15.10
+PyQt5_sip
+sip
+six
+svgwrite
+toml
+tomli
+typing_extensions
+unicodedata2
+python 3.10

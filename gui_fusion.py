@@ -162,35 +162,55 @@ class AlumCamGUI(QMainWindow):
         self.act_toggle_ga.triggered.connect(self.on_toggle_grid_axes)
         tb.addAction(self.act_toggle_ga)
 
-    # ===== Late init =====
+        # ===== Late init =====
     def _late_init_view(self):
-        view = self.display.View
-        viewer = self.display.Viewer
+            from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB, Quantity_NOC_GRAY
+            from OCC.Core.V3d import V3d_TypeOfOrientation
 
-        # Force white background
-        try:
-            view.SetBackgroundColor(Quantity_NOC_WHITE)
-            view.MustBeResized()
-        except Exception as e:
-            print(f"[background_color] warning: {e}")
+            view = self.display.View
+            viewer = self.display.Viewer
 
-        # If you keep custom color routine, call it after background
-        try:
-            if setup_viewer_colors:
-                setup_viewer_colors(self.display)  # optional
-        except Exception as e:
-            print(f"[setup_viewer_colors] warning: {e}")
+            # خلفية رمادية فاتحة بدون تدرج
+            try:
 
-        # Grid + Axes
-        try:
-            self._setup_grid_and_axes()
-        except Exception as e:
-            print(f"[setup_grid_and_axes] warning: {e}")
+                light_gray = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
+                view.SetBackgroundColor(light_gray)
+            except Exception as e:
+                print(f"[background] error: {e}")
+
+            # تفعيل المحاور الثلاثية بأسلوب Fusion
+            try:
+                view.TriedronDisplay(True)
+                view.SetTrihedronPosition(V3d_TypeOfOrientation.V3d_TOB_BOTTOM_LEFT)
+                view.SetTrihedronSize(0.08)
+                view.SetTrihedronVisibility(True)
+            except Exception as e:
+                print(f"[trihedron] warning: {e}")
+
+            # تفعيل الشبكة المستطيلة
+            try:
+                viewer.ActivateGrid(0)  # 0 = rectangular grid
+                viewer.SetGridColor(Quantity_NOC_GRAY)
+            except Exception as e:
+                print(f"[grid] warning: {e}")
+
+            # تحديث العارض
+            try:
+                self.display.Context.UpdateCurrentViewer()
+            except Exception as e:
+                print(f"[update] error: {e}")
+
+            # إعدادات إضافية (اختياري)
+            try:
+                if setup_viewer_colors:
+                    setup_viewer_colors(self.display)
+            except Exception as e:
+                print(f"[setup_viewer_colors] warning: {e}")
 
     # ===== Grid + Axes =====
         # ✅ v7: Set background color after viewer is initializeddef _setup_grid_and_axes(self):
-        """Grid and axes disabled for OCC 7.9 stability"""
-        pass
+
+    pass
     def _toggle_grid_and_axes(self, state: bool):
         viewer = self.display.Viewer
         view = self.display.View
@@ -216,7 +236,8 @@ class AlumCamGUI(QMainWindow):
         # ✅ v10: Set background using SetBgGradientColors (safe for OCC 7.9)
         from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
         light_gray = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
-        self.display.View.SetBgGradientColors(light_gray, light_gray, 2, 1)
+        self.display.View.SetBackgroundColor(light_gray)
+
 
     def on_toggle_grid_axes(self, checked: bool):
         try:

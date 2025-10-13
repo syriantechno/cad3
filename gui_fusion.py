@@ -162,50 +162,70 @@ class AlumCamGUI(QMainWindow):
         self.act_toggle_ga.triggered.connect(self.on_toggle_grid_axes)
         tb.addAction(self.act_toggle_ga)
 
+        from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1
+        from OCC.Core.Geom import Geom_Line
+        from OCC.Core.AIS import AIS_Line
+        from OCC.Core.Quantity import Quantity_NOC_RED, Quantity_NOC_GREEN, Quantity_NOC_BLUE
+
+        def draw_axes(context):
+            origin = gp_Pnt(0, 0, 0)
+
+            # X axis (red)
+            x_line = Geom_Line(gp_Ax1(origin, gp_Dir(1, 0, 0)))
+            x_ais = AIS_Line(x_line)
+            x_ais.SetColor(Quantity_Color(Quantity_NOC_RED))
+            x_ais.SetWidth(2.0)
+            context.Display(x_ais, True)
+
+            # Y axis (green)
+            y_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 1, 0)))
+            y_ais = AIS_Line(y_line)
+            y_ais.SetColor(Quantity_Color(Quantity_NOC_GREEN))
+            y_ais.SetWidth(2.0)
+            context.Display(y_ais, True)
+
+            # Z axis (blue)
+            z_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 0, 1)))
+            z_ais = AIS_Line(z_line)
+            z_ais.SetColor(Quantity_Color(Quantity_NOC_BLUE))
+            z_ais.SetWidth(2.0)
+            context.Display(z_ais, True)
+
+        # استدعِ الدالة بعد التهيئة
+        draw_axes(self.display.Context)
+
         # ===== Late init =====
     def _late_init_view(self):
-            from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB, Quantity_NOC_GRAY
-            from OCC.Core.V3d import V3d_TypeOfOrientation
 
-            view = self.display.View
-            viewer = self.display.Viewer
+        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB, Quantity_NOC_GRAY
+        from OCC.Core.V3d import V3d_TypeOfOrientation
 
-            # خلفية رمادية فاتحة بدون تدرج
-            try:
+        view = self.display.View
+        viewer = self.display.Viewer
 
-                light_gray = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
-                view.SetBackgroundColor(light_gray)
-            except Exception as e:
-                print(f"[background] error: {e}")
+        # خلفية رمادية
+        light_gray = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
+        view.SetBackgroundColor(light_gray)
 
-            # تفعيل المحاور الثلاثية بأسلوب Fusion
-            try:
-                view.TriedronDisplay(True)
-                view.SetTrihedronPosition(V3d_TypeOfOrientation.V3d_TOB_BOTTOM_LEFT)
-                view.SetTrihedronSize(0.08)
-                view.SetTrihedronVisibility(True)
-            except Exception as e:
-                print(f"[trihedron] warning: {e}")
+        # تفعيل المحاور
+        try:
+            view.TriedronDisplay(True)
+            view.SetTrihedronPosition(V3d_TypeOfOrientation.V3d_TOB_BOTTOM_LEFT)
+            view.SetTrihedronSize(0.5)  # حجم كبير وواضح
+            view.SetTrihedronVisibility(True)
 
-            # تفعيل الشبكة المستطيلة
-            try:
-                viewer.ActivateGrid(0)  # 0 = rectangular grid
-                viewer.SetGridColor(Quantity_NOC_GRAY)
-            except Exception as e:
-                print(f"[grid] warning: {e}")
+        except Exception as e:
+            print(f"[trihedron] error: {e}")
 
-            # تحديث العارض
-            try:
-                self.display.Context.UpdateCurrentViewer()
-            except Exception as e:
-                print(f"[update] error: {e}")
+        # تفعيل الشبكة
+        try:
+            viewer.ActivateGrid(0)
+            viewer.SetGridColor(Quantity_NOC_GRAY)
+        except Exception as e:
+            print(f"[grid] error: {e}")
 
-            # إعدادات إضافية (اختياري)
-            try:
-                if setup_viewer_colors:
-                    setup_viewer_colors(self.display)
-            except Exception as e:
-                print(f"[setup_viewer_colors] warning: {e}")
+        # تحديث العارض
+        self.display.Context.UpdateCurrentViewer()
 
     # ===== Grid + Axes =====
         # ✅ v7: Set background color after viewer is initializeddef _setup_grid_and_axes(self):

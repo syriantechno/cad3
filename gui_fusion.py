@@ -83,6 +83,11 @@ class AlumCamGUI(QMainWindow):
         self._grid_axes_on = True
         self._add_toolbar()
 
+
+        self._axis_x = None
+        self._axis_y = None
+        self._axis_z = None
+
         # ===== Bottom controls =====
         btn_layout = QHBoxLayout()
 
@@ -150,6 +155,36 @@ class AlumCamGUI(QMainWindow):
         self.loaded_shape = None
         self.hole_preview = None
         self.extrude_axis = "Y"
+
+    def draw_axes(self):
+        from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1
+        from OCC.Core.Geom import Geom_Line
+        from OCC.Core.AIS import AIS_Line
+        from OCC.Core.Quantity import Quantity_Color
+        from OCC.Core.Quantity import Quantity_NOC_RED, Quantity_NOC_GREEN, Quantity_NOC_BLUE
+
+        origin = gp_Pnt(0, 0, 0)
+
+        # X axis
+        x_line = Geom_Line(gp_Ax1(origin, gp_Dir(1, 0, 0)))
+        self._axis_x = AIS_Line(x_line)
+        self._axis_x.SetColor(Quantity_Color(Quantity_NOC_RED))
+        self._axis_x.SetWidth(2.0)
+        self.display.Context.Display(self._axis_x, True)
+
+        # Y axis
+        y_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 1, 0)))
+        self._axis_y = AIS_Line(y_line)
+        self._axis_y.SetColor(Quantity_Color(Quantity_NOC_GREEN))
+        self._axis_y.SetWidth(2.0)
+        self.display.Context.Display(self._axis_y, True)
+
+        # Z axis
+        z_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 0, 1)))
+        self._axis_z = AIS_Line(z_line)
+        self._axis_z.SetColor(Quantity_Color(Quantity_NOC_BLUE))
+        self._axis_z.SetWidth(2.0)
+        self.display.Context.Display(self._axis_z, True)
 
     # ===== Toolbar =====
     def _add_toolbar(self):
@@ -226,7 +261,7 @@ class AlumCamGUI(QMainWindow):
 
         # تحديث العارض
         self.display.Context.UpdateCurrentViewer()
-
+        self.draw_axes()
     # ===== Grid + Axes =====
         # ✅ v7: Set background color after viewer is initializeddef _setup_grid_and_axes(self):
 
@@ -286,6 +321,12 @@ class AlumCamGUI(QMainWindow):
             return
         self.loaded_shape = shape
         QTimer.singleShot(100, self._safe_display_shape)
+        if self._axis_x:
+            self.display.Context.Display(self._axis_x, True)
+        if self._axis_y:
+            self.display.Context.Display(self._axis_y, True)
+        if self._axis_z:
+            self.display.Context.Display(self._axis_z, True)
 
     def _safe_display_shape(self):
         try:

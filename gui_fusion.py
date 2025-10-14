@@ -15,8 +15,6 @@ from PyQt5.QtWidgets import (
     QDoubleSpinBox, QLineEdit, QToolBar, QAction
 )
 from PyQt5.QtCore import QTimer, Qt
-import sys
-from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
 # Project tools (expected to exist in your repo)
 from dxf_tools import load_dxf_file
@@ -26,12 +24,12 @@ from frontend.floating_window import create_tool_window
 from frontend.tree import Tree
 from frontend.operation_browser import OperationBrowser
 
-
 logging.basicConfig(level=logging.DEBUG)
 
 # OCC viewer
 try:
     from OCC.Display.qtDisplay import qtViewer3d
+
     OCC_OK = True
 except Exception:
     OCC_OK = False
@@ -42,14 +40,6 @@ try:
     from tools.viewer_utils import setup_viewer_colors
 except Exception:
     setup_viewer_colors = None
-
-# OCC types
-from OCC.Core.gp import gp_Ax3, gp_Pnt, gp_Dir
-
-from OCC.Core.Quantity import (
-    Quantity_NOC_WHITE, Quantity_NOC_BLACK, Quantity_Color, Quantity_TOC_RGB
-)
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter
 from frontend.operation_browser import OperationBrowser
 
 
@@ -165,7 +155,6 @@ class AlumCamGUI(QMainWindow):
         # ===== Toolbar =====
         self._grid_axes_on = True
 
-
         # ===== Axes State =====
         self._axis_x = None
         self._axis_y = None
@@ -201,39 +190,38 @@ class AlumCamGUI(QMainWindow):
         self.display.FitAll()
 
     def draw_axes(self):
-            from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1
-            from OCC.Core.Geom import Geom_Line
-            from OCC.Core.AIS import AIS_Line
-            from OCC.Core.Quantity import Quantity_Color
-            from OCC.Core.Quantity import Quantity_NOC_RED, Quantity_NOC_GREEN, Quantity_NOC_BLUE
+        from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1
+        from OCC.Core.Geom import Geom_Line
+        from OCC.Core.AIS import AIS_Line
+        from OCC.Core.Quantity import Quantity_Color
+        from OCC.Core.Quantity import Quantity_NOC_RED, Quantity_NOC_GREEN, Quantity_NOC_BLUE
 
-            origin = gp_Pnt(0, 0, 0)
+        origin = gp_Pnt(0, 0, 0)
 
-            # X
-            x_line = Geom_Line(gp_Ax1(origin, gp_Dir(1, 0, 0)))
-            self._axis_x = AIS_Line(x_line)
-            self._axis_x.SetColor(Quantity_Color(Quantity_NOC_RED))
-            self._axis_x.SetWidth(2.0)
+        # X
+        x_line = Geom_Line(gp_Ax1(origin, gp_Dir(1, 0, 0)))
+        self._axis_x = AIS_Line(x_line)
+        self._axis_x.SetColor(Quantity_Color(Quantity_NOC_RED))
+        self._axis_x.SetWidth(2.0)
 
-            # Y
-            y_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 1, 0)))
-            self._axis_y = AIS_Line(y_line)
-            self._axis_y.SetColor(Quantity_Color(Quantity_NOC_GREEN))
-            self._axis_y.SetWidth(2.0)
+        # Y
+        y_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 1, 0)))
+        self._axis_y = AIS_Line(y_line)
+        self._axis_y.SetColor(Quantity_Color(Quantity_NOC_GREEN))
+        self._axis_y.SetWidth(2.0)
 
-            # Z
-            z_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 0, 1)))
-            self._axis_z = AIS_Line(z_line)
-            self._axis_z.SetColor(Quantity_Color(Quantity_NOC_BLUE))
-            self._axis_z.SetWidth(2.0)
+        # Z
+        z_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 0, 1)))
+        self._axis_z = AIS_Line(z_line)
+        self._axis_z.SetColor(Quantity_Color(Quantity_NOC_BLUE))
+        self._axis_z.SetWidth(2.0)
 
-            ctx = self.display.Context
-            ctx.Display(self._axis_x, True)
-            ctx.Display(self._axis_y, True)
-            ctx.Display(self._axis_z, True)
+        ctx = self.display.Context
+        ctx.Display(self._axis_x, True)
+        ctx.Display(self._axis_y, True)
+        ctx.Display(self._axis_z, True)
 
-
-        # ===== Late init =====
+    # ===== Late init =====
     def _late_init_view(self):
 
         from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB, Quantity_NOC_GRAY
@@ -266,7 +254,6 @@ class AlumCamGUI(QMainWindow):
         # تحديث العارض
         self.display.Context.UpdateCurrentViewer()
         self.draw_axes()
-
 
     def on_toggle_grid_axes(self, checked: bool):
         try:
@@ -339,7 +326,6 @@ class AlumCamGUI(QMainWindow):
         self.loaded_shape = add_hole(self.loaded_shape, x, y, z, dia, axis)
         self.display_shape_with_axes(self.loaded_shape)
 
-
     def preview_clicked(self):
         if not self.loaded_shape:
             return
@@ -355,4 +341,3 @@ class AlumCamGUI(QMainWindow):
         self.display.DisplayShape(self.loaded_shape, update=False)
         self.display_shape_with_axes(self.loaded_shape)
         self.display.DisplayShape(self.hole_preview, color="RED", update=True)
-

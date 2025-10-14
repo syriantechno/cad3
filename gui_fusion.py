@@ -73,14 +73,13 @@ class AlumCamGUI(QMainWindow):
         QTimer.singleShot(100, self._late_init_view)
 
         # ===== tree window =====
-        if not hasattr(self, "tree"):
-            from frontend.tree import Tree
-            self.tree = Tree(parent=self)
-            self.tree.move(20, 20)
-            self.tree.setFixedHeight(300)
-            self.tree.show()
-            self.tree.raise_()
-            self.tree.add_item("Test Item")
+
+        self.tree = Tree(parent=self)
+        self.tree.move(20, 20)
+        self.tree.setFixedHeight(300)
+        self.tree.show()
+        self.tree.raise_()
+        self.tree.add_item("Test Item")
 
 
 
@@ -350,7 +349,7 @@ class AlumCamGUI(QMainWindow):
             self.display.Context.Display(self._axis_y, True)
         if self._axis_z:
             self.display.Context.Display(self._axis_z, True)
-
+            self.tree.add_item("DXF Profile", shape=self.loaded_shape, callback=self.display_shape)
     def _safe_display_shape(self):
         try:
             self.display.EraseAll()

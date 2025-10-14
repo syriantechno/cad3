@@ -91,11 +91,12 @@ class AlumCamGUI(QMainWindow):
 
         # ===== tree window =====
 
+        # داخل __init__ بعد إنشاء viewer
 
 
         # 🟡 لوحة العمليات (Browser)
         self.op_browser = OperationBrowser(self)
-        self.op_browser.move(0, 0)
+        self.op_browser.move(0, 150)
         self.op_browser.setFixedWidth(250)
         self.op_browser.setFixedHeight(600)
         self.op_browser.show()
@@ -113,7 +114,7 @@ class AlumCamGUI(QMainWindow):
         self.setMenuWidget(top_tabs)
 
         # ===== Toolbar (Grid & Axes toggle) =====
-        self._grid_axes_on = True
+        self._grid_axes_on = False
         self._add_toolbar()
 
 
@@ -188,37 +189,6 @@ class AlumCamGUI(QMainWindow):
         self.loaded_shape = None
         self.hole_preview = None
         self.extrude_axis = "Y"
-
-        from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout
-
-        # ====== الحاوية الرئيسية أسفل الـ Toolbar ======
-        container = QWidget(self)
-        container_layout = QHBoxLayout(container)
-        container_layout.setContentsMargins(0, 0, 0, 0)
-
-        # ====== اللوحة الجانبية (Operation Browser) ======
-        # إنشاء عنوان علوي ثابت مثل Fusion
-        browser_layout = QVBoxLayout(self.op_browser)
-        browser_layout.setContentsMargins(0, 0, 0, 0)
-        browser_label = QLabel("BROWSER")
-        browser_label.setStyleSheet("""
-            background-color: #E0E0E0;
-            font-weight: bold;
-            padding: 6px;
-            border-bottom: 1px solid #B0B0B0;
-        """)
-        browser_layout.insertWidget(0, browser_label)
-
-        # تثبيت اللوحة في أقصى اليسار
-        container_layout.addWidget(self.op_browser)
-
-        # ====== العارض 3D ======
-        container_layout.addWidget(self.display.GetWidget(), 1)
-
-        # تثبيت الحاوية أسفل التولبار
-        container.move(0, 50)  # 50 = ارتفاع الشريط العلوي عندك
-        container.resize(self.width(), self.height() - 50)
-        container.show()
 
     def on_browser_item_selected(self, category, name):
         print(f"🟡 [Browser] Selected {category} → {name}")

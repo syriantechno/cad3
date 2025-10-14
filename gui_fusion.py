@@ -265,6 +265,23 @@ class AlumCamGUI(QMainWindow):
         # تحديث العارض
         self.display.Context.UpdateCurrentViewer()
         self.draw_axes()
+
+        from OCC.Core.Quantity import Quantity_NOC_GRAY
+        from OCC.Core.Aspect import Aspect_GT_Rectangular
+
+        viewer = self.display.Viewer
+
+        # نوع الشبكة: مستطيلة
+        viewer.SetGridType(Aspect_GT_Rectangular)
+
+        # لون الشبكة
+        viewer.SetGridColor(Quantity_NOC_GRAY)
+
+        # تفعيل الشبكة
+        viewer.ActivateGrid(0)  # 0 = مستوية XY
+
+        # عرض الشبكة
+        viewer.ShowGrid(True)
     # ===== Grid + Axes =====
         # ✅ v7: Set background color after viewer is initializeddef _setup_grid_and_axes(self):
 

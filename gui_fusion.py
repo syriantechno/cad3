@@ -73,10 +73,16 @@ class AlumCamGUI(QMainWindow):
         QTimer.singleShot(100, self._late_init_view)
 
         # ===== tree window =====
-        self.tree = Tree(parent=self)
-        self.tree.move(10, 10)
-        self.tree.show()
-        self.tree.add_item("Test Item")
+        if not hasattr(self, "tree"):
+            from frontend.tree import Tree
+            self.tree = Tree(parent=self)
+            self.tree.move(20, 20)
+            self.tree.setFixedHeight(300)
+            self.tree.show()
+            self.tree.raise_()
+            self.tree.add_item("Test Item")
+
+
 
         # ===== Floating tool window =====
         self.tool_dialog, self.show_tool_page = create_tool_window(self)

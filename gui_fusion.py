@@ -165,26 +165,29 @@ class AlumCamGUI(QMainWindow):
 
         origin = gp_Pnt(0, 0, 0)
 
-        # X axis
+        # X
         x_line = Geom_Line(gp_Ax1(origin, gp_Dir(1, 0, 0)))
         self._axis_x = AIS_Line(x_line)
         self._axis_x.SetColor(Quantity_Color(Quantity_NOC_RED))
         self._axis_x.SetWidth(2.0)
-        self.display.Context.Display(self._axis_x, True)
 
-        # Y axis
+        # Y
         y_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 1, 0)))
         self._axis_y = AIS_Line(y_line)
         self._axis_y.SetColor(Quantity_Color(Quantity_NOC_GREEN))
         self._axis_y.SetWidth(2.0)
-        self.display.Context.Display(self._axis_y, True)
 
-        # Z axis
+        # Z
         z_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 0, 1)))
         self._axis_z = AIS_Line(z_line)
         self._axis_z.SetColor(Quantity_Color(Quantity_NOC_BLUE))
         self._axis_z.SetWidth(2.0)
-        self.display.Context.Display(self._axis_z, True)
+
+        # عرض المحاور
+        ctx = self.display.Context
+        ctx.Display(self._axis_x, True)
+        ctx.Display(self._axis_y, True)
+        ctx.Display(self._axis_z, True)
 
     # ===== Toolbar =====
     def _add_toolbar(self):
@@ -333,6 +336,13 @@ class AlumCamGUI(QMainWindow):
             self.display.EraseAll()
             self.display.DisplayShape(self.loaded_shape, update=True)
             self.display.FitAll()
+            # ✅ إعادة عرض المحاور بعد المسح
+            if self._axis_x and self._axis_y and self._axis_z:
+                ctx = self.display.Context
+                ctx.Display(self._axis_x, True)
+                ctx.Display(self._axis_y, True)
+                ctx.Display(self._axis_z, True)
+
         except Exception as e:
             print(f"Display failed: {e}")
 
@@ -346,6 +356,14 @@ class AlumCamGUI(QMainWindow):
             distance = self.distance_spin.value()
             self.loaded_shape = extrude_shape(self.loaded_shape, axis, distance)
             self.display.EraseAll()
+            # ✅ إعادة عرض المحاور بعد الإكسترود
+            if self._axis_x:
+                self.display.Context.Display(self._axis_x, True)
+            if self._axis_y:
+                self.display.Context.Display(self._axis_y, True)
+            if self._axis_z:
+                self.display.Context.Display(self._axis_z, True)
+
             self.display.DisplayShape(self.loaded_shape, update=True)
             self.display.FitAll()
             if self.tool_dialog.isVisible():
@@ -365,6 +383,7 @@ class AlumCamGUI(QMainWindow):
         self.display.EraseAll()
         self.display.DisplayShape(self.loaded_shape, update=True)
         self.display.FitAll()
+
 
     def preview_clicked(self):
         if not self.loaded_shape:

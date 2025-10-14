@@ -1,4 +1,4 @@
-# ✅ Patched v10: Use SetBgGradientColors for safe background on OCC 7.9, no grid
+# ✅ Patched v10: Use SetBgGradientColors for safe background on OCC 7.9, no grid1
 # ✅ Patched v9: Disabled grid/axes entirely for OCC 7.9 stability
 # ✅ Patched v8: Safe grid setup with fallback for OCC 7.9 (no crash)
 # ✅ Patched v7: Use SetBackgroundColors in _late_init_view (compatible with pythonocc 7.9)

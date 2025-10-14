@@ -43,14 +43,6 @@ def process_dxf_to_assets(
     shape=None,
     display=None,
 ):
-    """
-    يحوّل DXF إلى ملفات صديقة للتحميل الفوري:
-    - نسخ DXF
-    - حفظ BREP للشكل
-    - حفظ صورة PNG من العارض (إن توفر)
-
-    returns: (dxf_path, brep_path, image_path)
-    """
     base = slugify(profile_name) or slugify(dxf_src_path.stem)
     out_dir = ensure_profile_dir(base)
 
@@ -64,11 +56,7 @@ def process_dxf_to_assets(
     if shp is None:
         raise RuntimeError("DXF parsing returned no shape.")
 
-    # 3) حفظ BREP
-    brep_path = out_dir / f"{base}.brep"
-    _write_brep(shp, brep_path)
-
-    # 4) حفظ صورة
+    # 3) حفظ صورة فقط
     img_path = out_dir / f"{base}.png"
     if display is not None:
         try:
@@ -78,15 +66,5 @@ def process_dxf_to_assets(
     else:
         img_path.touch()
 
-    return dxf_dst, brep_path, img_path
+    return dxf_dst, None, img_path
 
-def load_brep_file(brep_path: Path):
-    from OCC.Core.BRepTools import breptools_Read  # noqa: WPS433
-    from OCC.Core.TopoDS import TopoDS_Shape  # noqa: WPS433
-    from OCC.Core.BRep import BRep_Builder  # noqa: WPS433
-    builder = BRep_Builder()
-    shape = TopoDS_Shape()
-    ok = breptools_Read(shape, str(brep_path), builder)
-    if not ok:
-        raise RuntimeError(f"Failed to read BREP: {brep_path}")
-    return shape

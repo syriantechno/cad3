@@ -6,11 +6,11 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QPoint
 from PyQt5.QtGui import QPixmap
-
+from dxf_tools import  load_dxf_file
 from pathlib import Path
 
 from tools.database import ProfileDB
-from tools.profile_tools import process_dxf_to_assets, load_brep_file
+from tools.profile_tools import process_dxf_to_assets
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 try:
     from OCC.Display.qtDisplay import qtViewer3d
@@ -311,16 +311,22 @@ def create_tool_window(parent):
             load_btn = QPushButton("Load")
             load_btn.setFixedWidth(70)
 
-            def make_loader(brep_path_local):
+            def make_loader(dxf_path_local):
                 def _loader():
                     try:
-                        shape = load_brep_file(Path(brep_path_local))
+                        shape = load_dxf_file(Path(dxf_path_local))
+                        if shape is None:
+                            raise RuntimeError("DXF parsing returned no shape.")
+                        if shape.IsNull():
+                            raise RuntimeError("Loaded shape is null.")
+
                         parent.display.EraseAll()
                         parent.display.DisplayShape(shape, update=True)
                         parent.display.FitAll()
-                        print(f"✅ Loaded profile from {brep_path_local}")
+                        print(f"✅ Loaded profile from {dxf_path_local}")
                     except Exception as e:
-                        QMessageBox.critical(dialog, "Error", f"Failed to load BREP:\n{e}")
+                        QMessageBox.critical(dialog, "Error", f"Failed to load DXF:\n{e}")
+
                 return _loader
 
             load_btn.clicked.connect(make_loader(brep_path))

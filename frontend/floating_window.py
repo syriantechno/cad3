@@ -336,6 +336,7 @@ def create_tool_window(parent):
                         self.parent.display.EraseAll()
                         self.parent.display.DisplayShape(shape, update=True)
                         self.parent.display.FitAll()
+                        print(f"📦 بروفايل: {name}, DXF: {dxf_path}")
 
                         print(f"✅ تم تحميل وعرض الشكل من: {path_obj}")
                     except Exception as e:
@@ -343,7 +344,7 @@ def create_tool_window(parent):
 
                 return _loader
 
-            load_btn.clicked.connect(make_loader(brep_path))
+            load_btn.clicked.connect(make_loader(dxf_path if dxf_path and Path(dxf_path).exists() else None))
 
             grid.addWidget(img_label, row_idx, 0)
             grid.addWidget(text_label, row_idx, 1)

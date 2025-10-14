@@ -189,6 +189,17 @@ class AlumCamGUI(QMainWindow):
 
         self.display.FitAll()
 
+    def display_shape_with_axes(self, shape):
+        self.display.EraseAll()
+        self.display.DisplayShape(shape, update=True)
+
+        ctx = self.display.Context
+        for axis in [self._axis_x, self._axis_y, self._axis_z]:
+            if axis:
+                ctx.Display(axis, True)
+
+        self.display.FitAll()
+
     def draw_axes(self):
             from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1
             from OCC.Core.Geom import Geom_Line
@@ -257,38 +268,6 @@ class AlumCamGUI(QMainWindow):
         self.draw_axes()
 
 
-    # ===== Grid + Axes =====
-        # ✅ v7: Set background color after viewer is initializeddef _setup_grid_and_axes(self):
-
-    pass
-    def _toggle_grid_and_axes(self, state: bool):
-        viewer = self.display.Viewer
-        view = self.display.View
-
-        if state:
-            self._setup_grid_and_axes()
-        else:
-            try:
-                viewer.DeactivateGrid()
-            except Exception:
-                pass
-            try:
-                view.TriedronErase()
-            except Exception:
-                pass
-            try:
-                view.Redraw()
-            except Exception:
-                pass
-            self._grid_axes_on = False
-            if hasattr(self, "act_toggle_ga"):
-                self.act_toggle_ga.setChecked(False)
-        # ✅ v10: Set background using SetBgGradientColors (safe for OCC 7.9)
-        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
-        light_gray = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
-        self.display.View.SetBackgroundColor(light_gray)
-
-
     def on_toggle_grid_axes(self, checked: bool):
         try:
             self._toggle_grid_and_axes(checked)
@@ -323,18 +302,10 @@ class AlumCamGUI(QMainWindow):
         if self._axis_z:
             self.display.Context.Display(self._axis_z, True)
             self.tree.add_item("DXF Profile", shape=self.loaded_shape, callback=self.display_shape)
+
     def _safe_display_shape(self):
         try:
-            self.display.EraseAll()
-            self.display.DisplayShape(self.loaded_shape, update=True)
-            self.display.FitAll()
-            # ✅ إعادة عرض المحاور بعد المسح
-            if self._axis_x and self._axis_y and self._axis_z:
-                ctx = self.display.Context
-                ctx.Display(self._axis_x, True)
-                ctx.Display(self._axis_y, True)
-                ctx.Display(self._axis_z, True)
-
+            self.display_shape_with_axes(self.loaded_shape)
         except Exception as e:
             print(f"Display failed: {e}")
 
@@ -349,18 +320,7 @@ class AlumCamGUI(QMainWindow):
             distance = self.distance_spin.value()
             self.loaded_shape = extrude_shape(self.loaded_shape, axis, distance)
 
-            self.display.EraseAll()
-            self.display.DisplayShape(self.loaded_shape, update=True)
-
-            # ✅ إعادة عرض المحاور بعد الإكسترود
-            if self._axis_x:
-                self.display.Context.Display(self._axis_x, True)
-            if self._axis_y:
-                self.display.Context.Display(self._axis_y, True)
-            if self._axis_z:
-                self.display.Context.Display(self._axis_z, True)
-
-            self.display.FitAll()
+            self.display_shape_with_axes(self.loaded_shape)
 
             if self.tool_dialog.isVisible():
                 self.tool_dialog.hide()
@@ -377,9 +337,7 @@ class AlumCamGUI(QMainWindow):
         dia = float(self.hole_dia.text())
         axis = self.axis_hole_combo.currentText()
         self.loaded_shape = add_hole(self.loaded_shape, x, y, z, dia, axis)
-        self.display.EraseAll()
-        self.display.DisplayShape(self.loaded_shape, update=True)
-        self.display.FitAll()
+        self.display_shape_with_axes(self.loaded_shape)
 
 
     def preview_clicked(self):
@@ -395,5 +353,6 @@ class AlumCamGUI(QMainWindow):
             self.display.DisplayShape(self.loaded_shape, update=True)
         self.hole_preview = preview_hole(x, y, z, dia, axis)
         self.display.DisplayShape(self.loaded_shape, update=False)
+        self.display_shape_with_axes(self.loaded_shape)
         self.display.DisplayShape(self.hole_preview, color="RED", update=True)
 

@@ -24,6 +24,8 @@ from extrude_tools import extrude_shape, add_hole, preview_hole
 from frontend.topbar_tabs import create_topbar_tabs
 from frontend.floating_window import create_tool_window
 from frontend.tree import Tree
+from frontend.operation_browser import OperationBrowser
+
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -68,29 +70,39 @@ class AlumCamGUI(QMainWindow):
         self.viewer_widget = qtViewer3d(self)
         layout.addWidget(self.viewer_widget)
         self.display = self.viewer_widget._display
-        self.display.set_bg_gradient_color(
-            Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
-            Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
-            True
-        )
+        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+
+        def apply_background():
+            print("⚡ Applying background color...")
+            self.display.set_bg_gradient_color(
+                Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
+                Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
+                True
+            )
+            self.display.View.FitAll()
+
+        # 🕒 تأخير 800ms لضمان أن OpenGL context جاهز تمامًا
+        QTimer.singleShot(1500, apply_background)
 
         # Set Fusion-like light gray backgroundlayout.addWidget(self.viewer_widget)
 
         # Init later after view is ready
-        QTimer.singleShot(100, self._late_init_view)
+
 
         # ===== tree window =====
 
-        self.tree = Tree(self.central_widget)  # ⬅ داخل الـ Layout الرئيسي
-        self.tree.setFixedHeight(300)
-        self.tree.setFixedWidth(200)
-        self.tree.move(20, 20)
-        self.tree.show()
-        self.tree.raise_()
-
-        self.tree.add_item("Test Item")
 
 
+        # 🟡 لوحة العمليات (Browser)
+        self.op_browser = OperationBrowser(self)
+        self.op_browser.move(0, 0)
+        self.op_browser.setFixedWidth(250)
+        self.op_browser.setFixedHeight(600)
+        self.op_browser.show()
+        self.op_browser.raise_()
+        self.op_browser.add_profile("TEST_PROFILE")
+
+        self.op_browser.item_selected.connect(self.on_browser_item_selected)
 
         # ===== Floating tool window =====
         self.tool_dialog, self.show_tool_page = create_tool_window(self)
@@ -176,6 +188,50 @@ class AlumCamGUI(QMainWindow):
         self.loaded_shape = None
         self.hole_preview = None
         self.extrude_axis = "Y"
+
+        from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel, QHBoxLayout
+
+        # ====== الحاوية الرئيسية أسفل الـ Toolbar ======
+        container = QWidget(self)
+        container_layout = QHBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+
+        # ====== اللوحة الجانبية (Operation Browser) ======
+        # إنشاء عنوان علوي ثابت مثل Fusion
+        browser_layout = QVBoxLayout(self.op_browser)
+        browser_layout.setContentsMargins(0, 0, 0, 0)
+        browser_label = QLabel("BROWSER")
+        browser_label.setStyleSheet("""
+            background-color: #E0E0E0;
+            font-weight: bold;
+            padding: 6px;
+            border-bottom: 1px solid #B0B0B0;
+        """)
+        browser_layout.insertWidget(0, browser_label)
+
+        # تثبيت اللوحة في أقصى اليسار
+        container_layout.addWidget(self.op_browser)
+
+        # ====== العارض 3D ======
+        container_layout.addWidget(self.display.GetWidget(), 1)
+
+        # تثبيت الحاوية أسفل التولبار
+        container.move(0, 50)  # 50 = ارتفاع الشريط العلوي عندك
+        container.resize(self.width(), self.height() - 50)
+        container.show()
+
+    def on_browser_item_selected(self, category, name):
+        print(f"🟡 [Browser] Selected {category} → {name}")
+        # لاحقاً: هنا تربط العمليات (إظهار جسم، تعديل Extrude...)
+
+    def _late_init_view(self):
+        # هذا السطر يُنفّذ بعد تأخير بحيث العرض جاهز
+        self.display.set_bg_gradient_color(
+            Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
+            Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
+            True
+        )
+        self.display.View.FitAll()
 
     def display_shape(self, shape):
         self.display.EraseAll()

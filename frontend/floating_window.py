@@ -311,9 +311,11 @@ def create_tool_window(parent):
             load_btn = QPushButton("Load")
             load_btn.setFixedWidth(70)
 
-            def make_loader(dxf_path_local):
+            # ✅ تعديل make_loader لإضافة البروفايل عند الضغط على Load فقط
+            def make_loader(dxf_path_local, profile_name):
                 def _loader():
                     try:
+                        print("🟡 DEBUG - profile_name:", profile_name)  # ← هذا ما ظهر عندك
                         shape = load_dxf_file(Path(dxf_path_local))
                         if shape is None or shape.IsNull():
                             raise RuntimeError("❌ DXF parsing returned no shape.")
@@ -325,8 +327,20 @@ def create_tool_window(parent):
 
                         main_window.display.EraseAll()
                         main_window.display.DisplayShape(shape, update=True)
-                        main_window.loaded_shape = shape  # ← تمرير الشكل إلى نافذة الإكسترود
+                        main_window.loaded_shape = shape  # تمرير الشكل إلى نافذة الإكسترود
                         main_window.display.FitAll()
+
+                        # 🟡 إضافة البروفايل إلى اللوحة الجانبية عند التحميل فقط
+                        print("🟡 DEBUG - profile_name:", profile_name)
+                        print("🟡 DEBUG - main_window:", main_window)
+                        print("🟡 DEBUG - has op_browser:", hasattr(main_window, "op_browser"))
+
+                        if hasattr(main_window, "op_browser"):
+                            main_window.op_browser.add_profile(profile_name)
+                            main_window.op_browser.expandAll()  # تأكد من ظهور العناصر الجديدة
+                            main_window.op_browser.update()
+                            main_window.op_browser.repaint()
+                            print(f"🟢 Added profile to browser: {profile_name}")
 
                         print(f"✅ Loaded profile from {dxf_path_local}")
                     except Exception as e:
@@ -334,7 +348,12 @@ def create_tool_window(parent):
 
                 return _loader
 
-            load_btn.clicked.connect(make_loader(dxf_path if dxf_path and Path(dxf_path).exists() else None))
+            load_btn.clicked.connect(
+                make_loader(
+                    dxf_path if dxf_path and Path(dxf_path).exists() else None,
+                    name
+                )
+            )
 
             grid.addWidget(img_label, row_idx, 0)
             grid.addWidget(text_label, row_idx, 1)
@@ -348,6 +367,13 @@ def create_tool_window(parent):
         if current_page == 0:
             try:
                 parent.extrude_clicked_from_window()
+
+                # 🟢 بعد تنفيذ عملية Extrude، نضيفها إلى اللوحة
+                profile_name = getattr(parent, "active_profile_name", None)
+                distance_val = getattr(parent, "last_extrude_distance", None)
+                if profile_name and distance_val and hasattr(parent, "op_browser"):
+                    parent.op_browser.add_extrude(profile_name, distance_val)
+
                 dialog.hide()
             except Exception as e:
                 QMessageBox.critical(dialog, "Extrude Error", str(e))
@@ -399,6 +425,11 @@ def create_tool_window(parent):
                 )
 
                 QMessageBox.information(dialog, "Saved", "Profile saved successfully.")
+
+                # 🟡 بعد الحفظ، أضف البروفايل إلى اللوحة
+                if hasattr(parent, "op_browser"):
+                    parent.op_browser.add_profile(name)
+
                 dialog.hide()
             except Exception as e:
                 QMessageBox.critical(dialog, "Error", f"Failed to save profile:\n{e}")

@@ -10,8 +10,10 @@ from dxf_tools import  load_dxf_file
 from pathlib import Path
 import shutil
 from tools.database import ProfileDB
-from tools.profile_tools import process_dxf_to_assets
-from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+import json, os
+from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import QSpinBox, QDoubleSpinBox, QLineEdit, QComboBox, QLabel, QPushButton, QFormLayout
 try:
     from OCC.Display.qtDisplay import qtViewer3d
 except Exception:
@@ -40,11 +42,36 @@ class DraggableDialog(QDialog):
         self._is_dragging = False
 
 
+
+
 def create_tool_window(parent):
     """
     نافذة عائمة متعددة الصفحات (Extrude / Profile / Manager)
     تعيد: dialog, show_page
     """
+
+    import json, os
+
+    def load_tool_types():
+        try:
+            with open("data/tool_types.json", "r") as f:
+                return json.load(f)
+        except Exception as e:
+            print("Failed to load tool types:", e)
+            return {}
+
+    tool_types = load_tool_types()
+
+    def open_add_type_dialog():
+        dialog = AddToolTypeDialog(tool_types, parent)
+        if dialog.exec_():  # إذا المستخدم ضغط "Save" داخل النافذة
+            # تحديث القائمة بعد الإضافة
+            type_combo.clear()
+            type_combo.addItems(tool_types.keys())
+            type_combo.setCurrentText(dialog.name_input.text())
+            update_tool_image(dialog.name_input.text())
+
+
     dialog = DraggableDialog(parent)
     dialog.setObjectName("ToolFloatingWindow")
     dialog.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
@@ -226,6 +253,62 @@ def create_tool_window(parent):
 
     stacked.addWidget(manager_page)
 
+    # ==================== Tools Manager Page ====================
+
+    tools_page = QWidget()
+    tools_layout = QVBoxLayout(tools_page)
+
+    header_label = QLabel("🛠 Tool Manager")
+    header_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+    tools_layout.addWidget(header_label)
+
+    form_layout = QFormLayout()
+
+    name_input = QLineEdit()
+    diameter_input = QDoubleSpinBox();
+    diameter_input.setSuffix(" mm");
+    diameter_input.setMaximum(100)
+    length_input = QDoubleSpinBox();
+    length_input.setSuffix(" mm");
+    length_input.setMaximum(200)
+    type_combo = QComboBox()
+    type_combo.setEditable(True)
+    type_combo.addItems(tool_types.keys())
+
+    add_type_btn = QPushButton("➕")
+    add_type_btn.setFixedWidth(30)
+
+    type_row = QHBoxLayout()
+    type_row.addWidget(type_combo)
+    type_row.addWidget(add_type_btn)
+
+    form_layout.addRow("Type:", type_row)
+
+    rpm_input = QSpinBox();
+    rpm_input.setMaximum(40000)
+    steps_input = QSpinBox();
+    steps_input.setMaximum(100)
+
+    image_label = QLabel("No image");
+    image_label.setFixedSize(120, 120);
+    image_label.setAlignment(Qt.AlignCenter)
+    image_label.setStyleSheet("border: 1px solid gray;")
+
+    form_layout.addRow("Tool Name:", name_input)
+    form_layout.addRow("Diameter:", diameter_input)
+    form_layout.addRow("Length:", length_input)
+    form_layout.addRow("Type:", type_combo)
+    form_layout.addRow("Default RPM:", rpm_input)
+    form_layout.addRow("Default Steps:", steps_input)
+    form_layout.addRow("Preview:", image_label)
+
+    tools_layout.addLayout(form_layout)
+
+    save_button = QPushButton("💾 Save Tool")
+    tools_layout.addWidget(save_button)
+
+    stacked.addWidget(tools_page)
+
     # ====== Bottom Buttons ======
     bottom_layout = QHBoxLayout()
     bottom_layout.addStretch()
@@ -359,6 +442,10 @@ def create_tool_window(parent):
             grid.addWidget(text_label, row_idx, 1)
             grid.addWidget(load_btn, row_idx, 2)
 
+
+
+
+
     # ================== زر Apply ==================
     def handle_apply():
         current_page = stacked.currentIndex()
@@ -444,9 +531,56 @@ def create_tool_window(parent):
             header.setText("Profiles Manager")
         elif index == 1:
             header.setText("Profile")
+        elif index == 3:
+            header.setText("Tools Manager")
         else:
             header.setText("Extrude")
         dialog.show()
         dialog.raise_()
+
+    class AddToolTypeDialog(QDialog):
+        def __init__(self, tool_types, parent=None):
+            super().__init__(parent)
+            self.setWindowTitle("Add New Tool Type")
+            self.setFixedSize(300, 250)
+            self.tool_types = tool_types
+            self.image_path = ""
+
+            layout = QVBoxLayout(self)
+
+            self.name_input = QLineEdit()
+            self.name_input.setPlaceholderText("Tool type name")
+            layout.addWidget(self.name_input)
+
+            self.image_label = QLabel("No image")
+            self.image_label.setFixedSize(120, 120)
+            self.image_label.setAlignment(Qt.AlignCenter)
+            self.image_label.setStyleSheet("border: 1px solid gray;")
+            layout.addWidget(self.image_label)
+
+            choose_btn = QPushButton("Choose Image")
+            choose_btn.clicked.connect(self.choose_image)
+            layout.addWidget(choose_btn)
+
+            save_btn = QPushButton("Save Type")
+            save_btn.clicked.connect(self.save_type)
+            layout.addWidget(save_btn)
+
+        def choose_image(self):
+            base_dir = os.path.dirname(__file__)
+            image_dir = os.path.join(base_dir, "..", "images")
+            path, _ = QFileDialog.getOpenFileName(self, "Choose image", image_dir)
+            if path:
+                self.image_path = os.path.relpath(path, os.path.join(base_dir, ".."))
+                pixmap = QPixmap(path).scaled(120, 120, Qt.KeepAspectRatio)
+                self.image_label.setPixmap(pixmap)
+
+        def save_type(self):
+            name = self.name_input.text().strip()
+            if name and self.image_path:
+                self.tool_types[name] = self.image_path
+                with open("data/tool_types.json", "w") as f:
+                    json.dump(self.tool_types, f, indent=2)
+                self.accept()
 
     return dialog, show_page

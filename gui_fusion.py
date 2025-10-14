@@ -23,7 +23,7 @@ from frontend.topbar_tabs import create_topbar_tabs
 from frontend.floating_window import create_tool_window
 from frontend.tree import Tree
 from frontend.operation_browser import OperationBrowser
-
+from tools.tool_db import init_db, insert_tool, get_all_tools
 logging.basicConfig(level=logging.DEBUG)
 
 # OCC viewer
@@ -46,6 +46,7 @@ from frontend.operation_browser import OperationBrowser
 class AlumCamGUI(QMainWindow):
     def __init__(self):
         super().__init__()
+        init_db()
         self.setWindowTitle("AlumCam GUI - Fusion‑style Viewer")
         self.setGeometry(100, 100, 1400, 800)
 
@@ -143,6 +144,7 @@ class AlumCamGUI(QMainWindow):
             self.display.View.FitAll()
 
         QTimer.singleShot(1500, apply_background)
+        self.draw_axes()
 
         # ===== Floating tool window =====
         self.tool_dialog, self.show_tool_page = create_tool_window(self)
@@ -188,6 +190,8 @@ class AlumCamGUI(QMainWindow):
                 ctx.Display(axis, True)
 
         self.display.FitAll()
+
+
 
     def draw_axes(self):
         from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1

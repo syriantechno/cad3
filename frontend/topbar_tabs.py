@@ -62,10 +62,11 @@ def create_topbar_tabs(parent):
 
     # ===== Tools Tab =====
     tools_tools = [
-        # زر Grid & Axes (Toggle) مثل Fusion
         ("frontend/icons/grid.png", "Grid & Axes", parent.on_toggle_grid_axes, True),
-        ("frontend/icons/tools.png", "Tools", lambda: print("Tools clicked"), False)
+        ("frontend/icons/tools.png", "Tools", lambda: print("Tools clicked"), False),
+        ("frontend/icons/tool_manager.png", "Tool Manager", lambda: parent.show_extrude_window(3), False)
     ]
+
     create_tab("Tools", tools_tools)
 
     # ===== Profile Tab =====

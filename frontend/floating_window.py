@@ -8,7 +8,7 @@ from PyQt5.QtCore import Qt, QPoint
 from PyQt5.QtGui import QPixmap
 from dxf_tools import  load_dxf_file
 from pathlib import Path
-
+import shutil
 from tools.database import ProfileDB
 from tools.profile_tools import process_dxf_to_assets
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
@@ -314,18 +314,32 @@ def create_tool_window(parent):
             def make_loader(dxf_path_local):
                 def _loader():
                     try:
-                        shape = load_dxf_file(Path(dxf_path_local))
-                        if shape is None:
-                            raise RuntimeError("DXF parsing returned no shape.")
-                        if shape.IsNull():
-                            raise RuntimeError("Loaded shape is null.")
+                        if not dxf_path_local or not str(dxf_path_local).strip():
+                            raise RuntimeError("❌ DXF path is empty or undefined.")
 
-                        parent.display.EraseAll()
-                        parent.display.DisplayShape(shape, update=True)
-                        parent.display.FitAll()
-                        print(f"✅ Loaded profile from {dxf_path_local}")
+                        print(f"🔍 محاولة تحميل DXF من: {dxf_path_local}")
+                        path_obj = Path(dxf_path_local).resolve()
+
+                        if not path_obj.exists():
+                            raise RuntimeError(f"❌ DXF file not found at: {path_obj}")
+                        if not path_obj.is_file():
+                            raise RuntimeError(f"❌ Expected a DXF file, but got a folder: {path_obj}")
+                        if not str(path_obj).lower().endswith(".dxf"):
+                            raise RuntimeError(f"❌ Invalid file type: {path_obj.name}")
+
+                        shape = load_dxf_file(path_obj)
+                        if shape is None or shape.IsNull():
+                            raise RuntimeError("❌ DXF parsing returned no shape.")
+
+                        if self.parent.display is None:
+                            raise RuntimeError("❌ Main display not initialized.")
+                        self.parent.display.EraseAll()
+                        self.parent.display.DisplayShape(shape, update=True)
+                        self.parent.display.FitAll()
+
+                        print(f"✅ تم تحميل وعرض الشكل من: {path_obj}")
                     except Exception as e:
-                        QMessageBox.critical(dialog, "Error", f"Failed to load DXF:\n{e}")
+                        QMessageBox.critical(self, "Error", f"Failed to load DXF:\n{e}")
 
                 return _loader
 
@@ -357,33 +371,47 @@ def create_tool_window(parent):
             if not dxf_path_edit.text():
                 QMessageBox.information(dialog, "Profile", "Please choose a DXF file.")
                 return
-
             try:
-                dxf_dst, brep_path, img_path = process_dxf_to_assets(
-                    Path(dxf_path_edit.text()),
-                    name,
-                    selected_shape.get("shape"),
-                    display=small_display
-                )
+                # تحميل الشكل
+                shape = load_dxf_file(dxf_path_edit.text())
+                if shape is None or shape.IsNull():
+                    raise RuntimeError("Invalid DXF shape.")
+
+                # عرض الشكل على العارض الصغير
+                if small_display is not None:
+                    small_display.EraseAll()
+                    small_display.DisplayShape(shape, update=True)
+                    small_display.FitAll()
+
+                # إعداد المسارات
+                profile_dir = Path("profiles") / name
+                profile_dir.mkdir(parents=True, exist_ok=True)
+                dxf_dst = profile_dir / f"{name}.dxf"
+                img_path = profile_dir / f"{name}.png"
+
+                # أخذ صورة من العارض
+                from tools.profile_tools import _dump_display_png
+                _dump_display_png(small_display, shape, img_path)
+
+                # نسخ ملف DXF كما هو
+                shutil.copy2(dxf_path_edit.text(), dxf_dst)
+
+                # حفظ في قاعدة البيانات
                 db.add_profile(
                     name=name,
                     code=p_code.text().strip(),
                     dimensions=p_dims.text().strip(),
                     notes=p_notes.text().strip(),
                     dxf_path=str(dxf_dst),
-                    brep_path=str(brep_path),
+                    brep_path="",
                     image_path=str(img_path)
                 )
+
                 QMessageBox.information(dialog, "Saved", "Profile saved successfully.")
                 dialog.hide()
             except Exception as e:
                 QMessageBox.critical(dialog, "Error", f"Failed to save profile:\n{e}")
-            return
-
-        # 2️⃣ Profiles Manager → لا إجراء
-        elif current_page == 2:
-            dialog.hide()
-            return
+                return
 
     apply_btn.clicked.connect(handle_apply)
 

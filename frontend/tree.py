@@ -1,44 +1,30 @@
 # frontend/tree.py
-
-from PyQt5.QtWidgets import QFrame, QVBoxLayout, QLabel
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PyQt5.QtCore import Qt
 
-class Tree(QFrame):
+class Tree(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._items = set()  # ← هذا السطر ضروري لمنع الخطأ
-
+        self._items = set()
         self.setObjectName("TreeFrame")
+
         self.setWindowFlags(Qt.Widget | Qt.FramelessWindowHint)
         self.setAttribute(Qt.WA_StyledBackground, True)
-        self.setAttribute(Qt.WA_TranslucentBackground, True)  # ← ضروري للشفافية
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
         self.setStyleSheet("""
             #TreeFrame {
-                background-color: rgba(30, 30, 30, 120);
+                background-color: rgb(240, 240, 240);
                 border-radius: 8px;
-                color: white;
-            }
-            #TreeFrame QLabel {
-                padding: 6px;
-                font-size: 14px;
-                background-color: transparent;
+                color: black;
             }
         """)
-        self.setLayout(QVBoxLayout())
 
-
-        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
-        self.raise_()
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
 
     def add_item(self, name, shape=None, callback=None):
         if name in self._items:
-            return  # العنصر موجود مسبقًا
-
+            return
         label = QLabel(name)
-        label.setStyleSheet("background-color: transparent;")
-        if callback:
-            label.mousePressEvent = lambda event: callback(shape)
         self.layout().addWidget(label)
         self._items.add(name)
-
-        print(f"Adding item: {name}")

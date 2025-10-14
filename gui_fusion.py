@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import QTimer, Qt
 import sys
+from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
 # Project tools (expected to exist in your repo)
 from dxf_tools import load_dxf_file
@@ -67,6 +68,12 @@ class AlumCamGUI(QMainWindow):
         self.viewer_widget = qtViewer3d(self)
         layout.addWidget(self.viewer_widget)
         self.display = self.viewer_widget._display
+        self.display.set_bg_gradient_color(
+            Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
+            Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
+            True
+        )
+
         # Set Fusion-like light gray backgroundlayout.addWidget(self.viewer_widget)
 
         # Init later after view is ready
@@ -74,11 +81,13 @@ class AlumCamGUI(QMainWindow):
 
         # ===== tree window =====
 
-        self.tree = Tree(parent=self)
-        self.tree.move(20, 20)
+        self.tree = Tree(self.central_widget)  # ⬅ داخل الـ Layout الرئيسي
         self.tree.setFixedHeight(300)
+        self.tree.setFixedWidth(200)
+        self.tree.move(20, 20)
         self.tree.show()
         self.tree.raise_()
+
         self.tree.add_item("Test Item")
 
 

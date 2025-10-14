@@ -49,6 +49,8 @@ from OCC.Core.gp import gp_Ax3, gp_Pnt, gp_Dir
 from OCC.Core.Quantity import (
     Quantity_NOC_WHITE, Quantity_NOC_BLACK, Quantity_Color, Quantity_TOC_RGB
 )
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter
+from frontend.operation_browser import OperationBrowser
 
 
 class AlumCamGUI(QMainWindow):
@@ -60,67 +62,21 @@ class AlumCamGUI(QMainWindow):
         if not OCC_OK:
             raise RuntimeError("pythonocc-core viewer not available.")
 
-        # ===== Central layout =====
-        self.central_widget = QWidget()
-        self.setCentralWidget(self.central_widget)
-        layout = QVBoxLayout(self.central_widget)
-
-        # ===== 3D Viewer =====
-        # ✅ v6: Use original layout + OCC background color
-        self.viewer_widget = qtViewer3d(self)
-        layout.addWidget(self.viewer_widget)
-        self.display = self.viewer_widget._display
+        from PyQt5.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QSplitter
         from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
-        def apply_background():
-            print("⚡ Applying background color...")
-            self.display.set_bg_gradient_color(
-                Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
-                Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
-                True
-            )
-            self.display.View.FitAll()
+        # ===== Viewer & Browser =====
+        self.viewer_widget = qtViewer3d(self)
+        self.display = self.viewer_widget._display
+        self.draw_axes()
 
-        # 🕒 تأخير 800ms لضمان أن OpenGL context جاهز تمامًا
-        QTimer.singleShot(1500, apply_background)
-
-        # Set Fusion-like light gray backgroundlayout.addWidget(self.viewer_widget)
-
-        # Init later after view is ready
-
-
-        # ===== tree window =====
-
-        # داخل __init__ بعد إنشاء viewer
-
-
-        # 🟡 لوحة العمليات (Browser)
-        self.op_browser = OperationBrowser(self)
-        self.op_browser.move(0, 150)
+        self.op_browser = OperationBrowser()
+        self.op_browser.setStyleSheet("background-color: rgba(220, 220, 220, 180);")
         self.op_browser.setFixedWidth(250)
-        self.op_browser.setFixedHeight(600)
-        self.op_browser.show()
-        self.op_browser.raise_()
-        self.op_browser.add_profile("TEST_PROFILE")
 
-        self.op_browser.item_selected.connect(self.on_browser_item_selected)
-
-        # ===== Floating tool window =====
-        self.tool_dialog, self.show_tool_page = create_tool_window(self)
-        self.tool_dialog.hide()
-
-        # ===== Tabs (existing top bar from your project) =====
-        top_tabs = create_topbar_tabs(self)
-        self.setMenuWidget(top_tabs)
-
-        # ===== Toolbar (Grid & Axes toggle) =====
-        self._grid_axes_on = False
-        self._add_toolbar()
-
-
-        self._axis_x = None
-        self._axis_y = None
-        self._axis_z = None
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.addWidget(self.op_browser)
+        splitter.addWidget(self.viewer_widget)
 
         # ===== Bottom controls =====
         btn_layout = QHBoxLayout()
@@ -145,9 +101,6 @@ class AlumCamGUI(QMainWindow):
         self.extrude_button.clicked.connect(self.show_extrude_window)
         btn_layout.addWidget(self.extrude_button)
 
-        layout.addLayout(btn_layout)
-
-        # Hole controls
         for lbl in ["X", "Y", "Z", "Dia"]:
             btn_layout.addWidget(QLabel(f"Hole {lbl}:"))
 
@@ -172,9 +125,7 @@ class AlumCamGUI(QMainWindow):
         self.preview_hole_btn.clicked.connect(self.preview_clicked)
         btn_layout.addWidget(self.preview_hole_btn)
 
-        # Profile Management Buttons
         profile_layout = QHBoxLayout()
-
         self.profile_button = QPushButton("📐 Profile")
         self.profile_button.clicked.connect(lambda: self.show_extrude_window(1))
         profile_layout.addWidget(self.profile_button)
@@ -183,106 +134,93 @@ class AlumCamGUI(QMainWindow):
         self.manage_profiles_button.clicked.connect(lambda: self.show_extrude_window(2))
         profile_layout.addWidget(self.manage_profiles_button)
 
-        layout.addLayout(profile_layout)
+        # ===== Final Layout =====
+        main_widget = QWidget()
+        main_layout = QVBoxLayout(main_widget)
+        main_layout.addWidget(splitter)
+        main_layout.addLayout(btn_layout)
+        main_layout.addLayout(profile_layout)
+        self.setCentralWidget(main_widget)
 
-        # State
+        # ===== Background Setup =====
+        def apply_background():
+            print("⚡ Applying background color...")
+            self.display.set_bg_gradient_color(
+                Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
+                Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
+                True
+            )
+            self.display.View.FitAll()
+
+        QTimer.singleShot(1500, apply_background)
+
+        # ===== Floating tool window =====
+        self.tool_dialog, self.show_tool_page = create_tool_window(self)
+        self.tool_dialog.hide()
+
+        # ===== Tabs =====
+        top_tabs = create_topbar_tabs(self)
+        self.setMenuWidget(top_tabs)
+
+        # ===== Toolbar =====
+        self._grid_axes_on = True
+
+
+        # ===== Axes State =====
+        self._axis_x = None
+        self._axis_y = None
+        self._axis_z = None
+
+        # ===== Geometry State =====
         self.loaded_shape = None
         self.hole_preview = None
         self.extrude_axis = "Y"
 
-    def on_browser_item_selected(self, category, name):
-        print(f"🟡 [Browser] Selected {category} → {name}")
-        # لاحقاً: هنا تربط العمليات (إظهار جسم، تعديل Extrude...)
-
-    def _late_init_view(self):
-        # هذا السطر يُنفّذ بعد تأخير بحيث العرض جاهز
-        self.display.set_bg_gradient_color(
-            Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
-            Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
-            True
-        )
-        self.display.View.FitAll()
-
     def display_shape(self, shape):
         self.display.EraseAll()
         self.display.DisplayShape(shape, update=True)
+
+        # ✅ إعادة عرض المحاور بعد كل عملية
+        if self._axis_x and self._axis_y and self._axis_z:
+            ctx = self.display.Context
+            ctx.Display(self._axis_x, True)
+            ctx.Display(self._axis_y, True)
+            ctx.Display(self._axis_z, True)
+
         self.display.FitAll()
 
     def draw_axes(self):
-        from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1
-        from OCC.Core.Geom import Geom_Line
-        from OCC.Core.AIS import AIS_Line
-        from OCC.Core.Quantity import Quantity_Color
-        from OCC.Core.Quantity import Quantity_NOC_RED, Quantity_NOC_GREEN, Quantity_NOC_BLUE
+            from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1
+            from OCC.Core.Geom import Geom_Line
+            from OCC.Core.AIS import AIS_Line
+            from OCC.Core.Quantity import Quantity_Color
+            from OCC.Core.Quantity import Quantity_NOC_RED, Quantity_NOC_GREEN, Quantity_NOC_BLUE
 
-        origin = gp_Pnt(0, 0, 0)
-
-        # X
-        x_line = Geom_Line(gp_Ax1(origin, gp_Dir(1, 0, 0)))
-        self._axis_x = AIS_Line(x_line)
-        self._axis_x.SetColor(Quantity_Color(Quantity_NOC_RED))
-        self._axis_x.SetWidth(2.0)
-
-        # Y
-        y_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 1, 0)))
-        self._axis_y = AIS_Line(y_line)
-        self._axis_y.SetColor(Quantity_Color(Quantity_NOC_GREEN))
-        self._axis_y.SetWidth(2.0)
-
-        # Z
-        z_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 0, 1)))
-        self._axis_z = AIS_Line(z_line)
-        self._axis_z.SetColor(Quantity_Color(Quantity_NOC_BLUE))
-        self._axis_z.SetWidth(2.0)
-
-        # عرض المحاور
-        ctx = self.display.Context
-        ctx.Display(self._axis_x, True)
-        ctx.Display(self._axis_y, True)
-        ctx.Display(self._axis_z, True)
-
-    # ===== Toolbar =====
-    def _add_toolbar(self):
-        tb = QToolBar("View")
-        self.addToolBar(Qt.TopToolBarArea, tb)
-
-        self.act_toggle_ga = QAction("Grid & Axes", self)
-        self.act_toggle_ga.setCheckable(True)
-        self.act_toggle_ga.setChecked(True)
-        self.act_toggle_ga.triggered.connect(self.on_toggle_grid_axes)
-        tb.addAction(self.act_toggle_ga)
-
-        from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1
-        from OCC.Core.Geom import Geom_Line
-        from OCC.Core.AIS import AIS_Line
-        from OCC.Core.Quantity import Quantity_NOC_RED, Quantity_NOC_GREEN, Quantity_NOC_BLUE
-
-        def draw_axes(context):
             origin = gp_Pnt(0, 0, 0)
 
-            # X axis (red)
+            # X
             x_line = Geom_Line(gp_Ax1(origin, gp_Dir(1, 0, 0)))
-            x_ais = AIS_Line(x_line)
-            x_ais.SetColor(Quantity_Color(Quantity_NOC_RED))
-            x_ais.SetWidth(2.0)
-            context.Display(x_ais, True)
+            self._axis_x = AIS_Line(x_line)
+            self._axis_x.SetColor(Quantity_Color(Quantity_NOC_RED))
+            self._axis_x.SetWidth(2.0)
 
-            # Y axis (green)
+            # Y
             y_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 1, 0)))
-            y_ais = AIS_Line(y_line)
-            y_ais.SetColor(Quantity_Color(Quantity_NOC_GREEN))
-            y_ais.SetWidth(2.0)
-            context.Display(y_ais, True)
+            self._axis_y = AIS_Line(y_line)
+            self._axis_y.SetColor(Quantity_Color(Quantity_NOC_GREEN))
+            self._axis_y.SetWidth(2.0)
 
-            # Z axis (blue)
+            # Z
             z_line = Geom_Line(gp_Ax1(origin, gp_Dir(0, 0, 1)))
-            z_ais = AIS_Line(z_line)
-            z_ais.SetColor(Quantity_Color(Quantity_NOC_BLUE))
-            z_ais.SetWidth(2.0)
-            context.Display(z_ais, True)
+            self._axis_z = AIS_Line(z_line)
+            self._axis_z.SetColor(Quantity_Color(Quantity_NOC_BLUE))
+            self._axis_z.SetWidth(2.0)
 
-        # استدعِ الدالة بعد التهيئة
-        draw_axes(self.display.Context)
+            ctx = self.display.Context
+            ctx.Display(self._axis_x, True)
+            ctx.Display(self._axis_y, True)
+            ctx.Display(self._axis_z, True)
+
 
         # ===== Late init =====
     def _late_init_view(self):
@@ -406,10 +344,14 @@ class AlumCamGUI(QMainWindow):
             if not self.loaded_shape:
                 print("⚠️ No shape loaded for extrusion.")
                 return
+
             axis = self.axis_combo.currentText()
             distance = self.distance_spin.value()
             self.loaded_shape = extrude_shape(self.loaded_shape, axis, distance)
+
             self.display.EraseAll()
+            self.display.DisplayShape(self.loaded_shape, update=True)
+
             # ✅ إعادة عرض المحاور بعد الإكسترود
             if self._axis_x:
                 self.display.Context.Display(self._axis_x, True)
@@ -418,10 +360,11 @@ class AlumCamGUI(QMainWindow):
             if self._axis_z:
                 self.display.Context.Display(self._axis_z, True)
 
-            self.display.DisplayShape(self.loaded_shape, update=True)
             self.display.FitAll()
+
             if self.tool_dialog.isVisible():
                 self.tool_dialog.hide()
+
         except Exception as e:
             print(f"extrude_clicked_from_window error: {e}")
 

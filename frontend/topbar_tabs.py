@@ -69,6 +69,7 @@ def create_topbar_tabs(parent):
     create_tab("Tools", tools_tools)
 
     # ===== Profile Tab =====
+
     profile_tools = [
         ("frontend/icons/profile.png", "Profile", lambda: parent.show_extrude_window(1), False)
     ]

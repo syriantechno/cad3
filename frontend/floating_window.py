@@ -314,33 +314,23 @@ def create_tool_window(parent):
             def make_loader(dxf_path_local):
                 def _loader():
                     try:
-                        if not dxf_path_local or not str(dxf_path_local).strip():
-                            raise RuntimeError("❌ DXF path is empty or undefined.")
-
-                        print(f"🔍 محاولة تحميل DXF من: {dxf_path_local}")
-                        path_obj = Path(dxf_path_local).resolve()
-
-                        if not path_obj.exists():
-                            raise RuntimeError(f"❌ DXF file not found at: {path_obj}")
-                        if not path_obj.is_file():
-                            raise RuntimeError(f"❌ Expected a DXF file, but got a folder: {path_obj}")
-                        if not str(path_obj).lower().endswith(".dxf"):
-                            raise RuntimeError(f"❌ Invalid file type: {path_obj.name}")
-
-                        shape = load_dxf_file(path_obj)
+                        shape = load_dxf_file(Path(dxf_path_local))
                         if shape is None or shape.IsNull():
                             raise RuntimeError("❌ DXF parsing returned no shape.")
 
-                        if self.parent.display is None:
+                        # ✅ الحصول على العارض من النافذة الرئيسية
+                        main_window = dialog.parent()
+                        if not hasattr(main_window, "display") or main_window.display is None:
                             raise RuntimeError("❌ Main display not initialized.")
-                        self.parent.display.EraseAll()
-                        self.parent.display.DisplayShape(shape, update=True)
-                        self.parent.display.FitAll()
-                        print(f"📦 بروفايل: {name}, DXF: {dxf_path}")
 
-                        print(f"✅ تم تحميل وعرض الشكل من: {path_obj}")
+                        main_window.display.EraseAll()
+                        main_window.display.DisplayShape(shape, update=True)
+                        main_window.loaded_shape = shape  # ← تمرير الشكل إلى نافذة الإكسترود
+                        main_window.display.FitAll()
+
+                        print(f"✅ Loaded profile from {dxf_path_local}")
                     except Exception as e:
-                        QMessageBox.critical(self, "Error", f"Failed to load DXF:\n{e}")
+                        QMessageBox.critical(dialog, "Error", f"Failed to load DXF:\n{e}")
 
                 return _loader
 

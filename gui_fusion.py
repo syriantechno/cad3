@@ -22,6 +22,7 @@ from dxf_tools import load_dxf_file
 from extrude_tools import extrude_shape, add_hole, preview_hole
 from frontend.topbar_tabs import create_topbar_tabs
 from frontend.floating_window import create_tool_window
+from frontend.tree import Tree
 
 logging.basicConfig(level=logging.DEBUG)
 
@@ -70,6 +71,12 @@ class AlumCamGUI(QMainWindow):
 
         # Init later after view is ready
         QTimer.singleShot(100, self._late_init_view)
+
+        # ===== tree window =====
+        self.tree = Tree(parent=self)
+        self.tree.move(10, 10)
+        self.tree.show()
+        self.tree.add_item("Test Item")
 
         # ===== Floating tool window =====
         self.tool_dialog, self.show_tool_page = create_tool_window(self)
@@ -155,6 +162,11 @@ class AlumCamGUI(QMainWindow):
         self.loaded_shape = None
         self.hole_preview = None
         self.extrude_axis = "Y"
+
+    def display_shape(self, shape):
+        self.display.EraseAll()
+        self.display.DisplayShape(shape, update=True)
+        self.display.FitAll()
 
     def draw_axes(self):
         from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1

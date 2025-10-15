@@ -426,3 +426,40 @@ class AlumCamGUI(QMainWindow):
         # عرض المعاينة باللون الأحمر
         self.hole_preview = preview_hole(x, y, z, dia, axis)
         self.display.DisplayShape(self.hole_preview, color="RED", update=True)
+
+    def open_add_profile_page(self):
+        print("[DEBUG] تم الضغط على زر Profile")
+
+        if not hasattr(self, "tool_dialog") or self.tool_dialog is None:
+            print("[ERROR] tool_dialog غير جاهز")
+            return
+
+        dialog = self.tool_dialog
+
+        if not hasattr(dialog, "profile_page") or dialog.profile_page is None:
+            print("[ERROR] profile_page غير جاهزة")
+            return
+
+        profile_page = dialog.profile_page
+        print("[DEBUG] tool_dialog و profile_page جاهزين")
+
+        # تصفير سياق التعديل
+        dialog._edit_ctx.update({
+            "active": False,
+            "pid": None,
+            "orig_name": None,
+            "orig_dxf": None,
+            "orig_img": None
+        })
+
+        # تصفير حقول الإدخال
+        profile_page._p_name.clear()
+        profile_page._p_code.clear()
+        profile_page._p_dims.clear()
+        profile_page._p_notes.clear()
+        profile_page._dxf_path_edit.clear()
+
+        # فتح صفحة البروفايل (index 1)
+        self.show_tool_page(1)
+
+

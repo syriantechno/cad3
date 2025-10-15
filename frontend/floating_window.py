@@ -506,23 +506,36 @@ def create_tools_manager_page(tool_types, open_add_type_dialog_cb):
     rpm_input = QSpinBox(); rpm_input.setMaximum(40000)
     steps_input = QSpinBox(); steps_input.setMaximum(100)
 
-    image_label = QLabel("No image")
-    image_label.setFixedSize(120, 120)
-    image_label.setAlignment(Qt.AlignCenter)
-    image_label.setStyleSheet("border: 1px solid gray;")
-
     layout.addRow("Tool Name:", name_input)
     layout.addRow("Diameter:", dia_input)
     layout.addRow("Length:", length_input)
     layout.addRow("Type:", type_row)
     layout.addRow("Default RPM:", rpm_input)
     layout.addRow("Default Steps:", steps_input)
-    layout.addRow("Preview:", image_label)
+
+    # معاينة الصورة بعد كل الحقول
+    preview_title = QLabel("Preview:")
+    preview_title.setAlignment(Qt.AlignCenter)
+    layout.addRow(preview_title)
+
+    image_label = QLabel("No image")
+    image_label.setFixedSize(180, 180)
+    image_label.setAlignment(Qt.AlignCenter)
+    image_label.setStyleSheet("background: none; border: none;")
+
+    image_container = QWidget()
+    image_layout = QHBoxLayout(image_container)
+    image_layout.setContentsMargins(0, 0, 0, 0)
+    image_layout.addStretch()
+    image_layout.addWidget(image_label)
+    image_layout.addStretch()
+
+    layout.addRow(image_container)
 
     def update_tool_image(tool_type_name):
         img_path = tool_types.get(tool_type_name)
         if img_path and Path(img_path).exists():
-            pix = QPixmap(str(img_path)).scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = QPixmap(str(img_path)).scaled(180, 180, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             image_label.setPixmap(pix)
         else:
             image_label.setText("No image")
@@ -554,7 +567,7 @@ class AddToolTypeDialog(QDialog):
     def __init__(self, tool_types: dict, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Add New Tool Type")
-        self.setFixedSize(300, 260)
+        self.setFixedSize(300, 360)
         self.tool_types = tool_types
         self.image_path = ""
 
@@ -563,31 +576,86 @@ class AddToolTypeDialog(QDialog):
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("Tool type name")
         layout.addWidget(self.name_input)
+        from PyQt5.QtCore import Qt
 
         self.image_label = QLabel("No image")
         self.image_label.setFixedSize(120, 120)
         self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setStyleSheet("border: 1px solid gray;")
-        layout.addWidget(self.image_label)
+        self.image_label.setStyleSheet("")
 
-        choose_btn = QPushButton("Choose Image")
-        choose_btn.clicked.connect(self.choose_image)
-        layout.addWidget(choose_btn)
+        center_row = QHBoxLayout()
+        center_row.addStretch()
+        center_row.addWidget(self.image_label)
+        center_row.addStretch()
+        layout.addLayout(center_row)
+
+
+        # ✅ شبكة صور ثابتة للاختيار
+        from PyQt5.QtWidgets import QGridLayout
+        from PyQt5.QtGui import QPixmap
+        from PyQt5.QtCore import Qt
+        from pathlib import Path
+        import os
+
+        grid = QGridLayout()
+        self.image_buttons = []
+        base_dir = os.path.dirname(__file__)
+        image_dir = os.path.join(base_dir, "icons")
+        image_files = ["endmill.png", "endmill1.png", "ball.png", "v.png"]
+
+        for i, fname in enumerate(image_files):
+            full_path = os.path.join(image_dir, fname)
+            rel_path = os.path.relpath(full_path, os.path.join(base_dir, ".."))
+
+            label = QLabel()
+            label.setFixedSize(60, 60)
+            label.setCursor(Qt.PointingHandCursor)
+            label.setStyleSheet("border: 1px solid gray;")
+
+            if Path(full_path).exists():
+                pix = QPixmap(full_path)
+                if not pix.isNull():
+                    label.setPixmap(pix.scaled(60, 60, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                else:
+                    label.setText("Invalid")
+                    label.setAlignment(Qt.AlignCenter)
+            else:
+                label.setText("Missing")
+                label.setAlignment(Qt.AlignCenter)
+
+            # ✅ استخدم دالة مستقلة لتجنب انهيار lambda
+            label.mousePressEvent = self.make_click_handler(rel_path, full_path, label)
+            self.image_buttons.append(label)
+            grid.addWidget(label, i // 2, i % 2)
+
+        layout.addLayout(grid)
 
         save_btn = QPushButton("Save Type")
+        save_btn.setObjectName("ApplyBtn")
         save_btn.clicked.connect(self.save_type)
-        layout.addWidget(save_btn)
 
-    def choose_image(self):
-        base_dir = os.path.dirname(__file__)
-        image_dir = os.path.join(base_dir, "..", "images")
-        Path(image_dir).mkdir(parents=True, exist_ok=True)
-        path, _ = QFileDialog.getOpenFileName(self, "Choose image", image_dir)
-        if path:
-            rel_root = os.path.join(base_dir, "..")
-            self.image_path = os.path.relpath(path, rel_root)
-            pixmap = QPixmap(path).scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-            self.image_label.setPixmap(pixmap)
+        layout.addWidget(save_btn)  # تأكد أن هذا السطر موجود
+
+    def make_click_handler(self, rel_path, full_path, label):
+        def handler(event):
+            if not Path(full_path).exists():
+                print("⚠️ الصورة غير موجودة:", full_path)
+                return
+
+            self.image_path = rel_path  # هذا يُستخدم للحفظ لاحقًا
+
+            pixmap = QPixmap(full_path)
+            if pixmap.isNull():
+                print("⚠️ فشل تحميل الصورة:", full_path)
+                return
+
+            self.image_label.setPixmap(pixmap.scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+            for b in self.image_buttons:
+                b.setStyleSheet("border: 1px solid gray;")
+            label.setStyleSheet("border: 2px solid blue;")
+
+        return handler
 
     def save_type(self):
         name = self.name_input.text().strip()
@@ -661,6 +729,7 @@ def create_tool_window(parent):
     # صفحات
     extrude_page = create_extrude_page()     # index 0
     profile_page = create_profile_page()     # index 1
+    dialog.profile_page = profile_page
 
     # getters لتمريرها للـ v2 للتعديل
     profile_page_getter = lambda: profile_page

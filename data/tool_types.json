@@ -1,5 +1,7 @@
 {
   "Endmill": "images/endmill.png",
   "Ballnose": "images/ballnose.png",
-  "Chamfer": "images/chamfer.png"
+  "Chamfer": "images/chamfer.png",
+  "ball bits": "frontend\\icons\\ball.png",
+  "endmil": "frontend\\icons\\endmill1.png"
 }

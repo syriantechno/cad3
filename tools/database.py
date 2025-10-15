@@ -46,3 +46,10 @@ class ProfileDB:
             cur.execute("""SELECT id, name, code, dimensions, notes, dxf_path, brep_path, image_path, created_at
                            FROM profiles ORDER BY created_at DESC LIMIT ?""", (limit,))
             return cur.fetchall()
+
+    def delete_profile(self, profile_id: int):
+        """يحذف بروفايل من قاعدة البيانات حسب الـ ID."""
+        with sqlite3.connect(self.db_path) as con:
+            cur = con.cursor()
+            cur.execute("DELETE FROM profiles WHERE id = ?", (profile_id,))
+            con.commit()

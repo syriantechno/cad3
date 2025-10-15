@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QStackedWidget, QScrollArea,
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QStackedWidget,
     QPushButton, QComboBox, QDoubleSpinBox, QSpinBox, QLineEdit, QLabel,
     QWidget, QFrame, QListWidget, QSizePolicy, QMessageBox, QFileDialog
 )
@@ -231,13 +231,15 @@ def create_profile_page():
 
 
 # ======================================================================
-# صفحة: مدير البروفايلات (الجديدة - قائمة يمين + تفاصيل يسار + صورة + OK)
+# صفحة: مدير البروفايلات (v2) — قائمة يمين + تفاصيل يسار + صورة + OK/EDIT/DELETE
 # ======================================================================
-def create_profile_manager_page_v2(parent):
+def create_profile_manager_page_v2(parent, profile_page_getter=None, stacked_getter=None):
     """
-    تصميم جديد:
+    تصميم:
     - يمين: قائمة أسماء البروفايلات (QListWidget)
-    - يسار: صورة + تفاصيل + زر OK لتحميل البروفايل على العارض الرئيسي
+    - يسار: صورة + تفاصيل + أزرار [OK] [Edit] [Delete]
+    - profile_page_getter: دالة تُعيد صفحة Profile لملء الحقول وقت التعديل
+    - stacked_getter: دالة تُعيد الـ QStackedWidget للتحويل بين الصفحات
     """
     page = QWidget()
     root = QHBoxLayout(page)
@@ -271,9 +273,16 @@ def create_profile_manager_page_v2(parent):
         w.setWordWrap(True)
         left_layout.addWidget(w)
 
+    # أزرار العمليات
+    btn_row = QHBoxLayout()
     ok_btn = QPushButton("OK")
     ok_btn.setStyleSheet("background:#0078d4; color:white; font-weight:bold;")
-    left_layout.addWidget(ok_btn)
+    edit_btn = QPushButton("✏️ Edit")
+    del_btn = QPushButton("🗑 Delete")
+    btn_row.addWidget(ok_btn)
+    btn_row.addWidget(edit_btn)
+    btn_row.addWidget(del_btn)
+    left_layout.addLayout(btn_row)
 
     root.addWidget(left_container, alignment=Qt.AlignLeft)
 
@@ -284,7 +293,7 @@ def create_profile_manager_page_v2(parent):
     page.lbl_code = lbl_code
     page.lbl_size = lbl_size
     page.lbl_desc = lbl_desc
-    page.selected = {"dxf": None}
+    page.selected = {"dxf": None, "pid": None, "name": None, "img": None}
 
     # ---------- دالة التحديث ----------
     def refresh_profiles_list_v2():
@@ -322,8 +331,8 @@ def create_profile_manager_page_v2(parent):
         else:
             page.image_label.setPixmap(QPixmap())
 
-        page.selected["dxf"] = dxf_path
-        print(f"[DEBUG] Selected profile: {name}  dxf={dxf_path}")
+        page.selected.update({"dxf": dxf_path, "pid": pid, "name": name, "img": img})
+        print(f"[DEBUG] Selected profile: id={pid} name={name} dxf={dxf_path}")
 
     profile_list.currentRowChanged.connect(on_select)
 
@@ -377,8 +386,102 @@ def create_profile_manager_page_v2(parent):
 
     ok_btn.clicked.connect(on_ok)
 
+    # ---------- زر Edit: يملأ صفحة Profile للتعديل ----------
+    def on_edit():
+        if not hasattr(page, "profiles") or not page.profiles:
+            return
+        row = page.profile_list.currentRow()
+        if row < 0 or row >= len(page.profiles):
+            QMessageBox.information(page, "Edit", "Please select a profile to edit.")
+            return
+
+        pid, name, code, dims, notes, dxf_path, brep, img, created = page.profiles[row]
+
+        # احصل على صفحة Profile و الـ stacked
+        p_page = profile_page_getter() if callable(profile_page_getter) else None
+        stk = stacked_getter() if callable(stacked_getter) else None
+        if p_page is None or stk is None:
+            QMessageBox.critical(page, "Edit", "Profile page not available.")
+            return
+
+        # خزّن سياق التعديل في الـ Dialog (سيُقرأ في handle_apply)
+        dialog = stk.parent()  # DraggableDialog
+        if not hasattr(dialog, "_edit_ctx"):
+            dialog._edit_ctx = {}
+        dialog._edit_ctx.update({
+            "active": True,
+            "pid": pid,
+            "orig_name": name,
+            "orig_dxf": dxf_path,
+            "orig_img": img
+        })
+
+        # عبّئ الحقول
+        p_page._p_name.setText(name or "")
+        p_page._p_code.setText(code or "")
+        p_page._p_dims.setText(dims or "")
+        p_page._p_notes.setText(notes or "")
+        p_page._dxf_path_edit.setText(dxf_path or "")
+
+        print(f"[DEBUG] Edit profile -> id={pid}, name={name}")
+        # افتح صفحة Profile
+        stk.setCurrentIndex(1)
+
+    edit_btn.clicked.connect(on_edit)
+
+    # ---------- زر Delete: حذف من DB + ملفات ----------
+    def on_delete():
+        if not hasattr(page, "profiles") or not page.profiles:
+            return
+        row = page.profile_list.currentRow()
+        if row < 0 or row >= len(page.profiles):
+            QMessageBox.information(page, "Delete", "Please select a profile to delete.")
+            return
+
+        pid, name, code, dims, notes, dxf_path, brep, img, created = page.profiles[row]
+        ans = QMessageBox.question(
+            page, "Confirm Delete",
+            f"Are you sure you want to delete profile:\n\n{name}",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if ans != QMessageBox.Yes:
+            return
+
+        # حذف الملفات
+        try:
+            if _safe_exists(dxf_path):
+                Path(dxf_path).unlink(missing_ok=True)
+            if _safe_exists(img):
+                Path(img).unlink(missing_ok=True)
+            # حذف المجلد إن كان باسم البروفايل وبدون محتوى
+            prof_dir = Path("profiles") / name
+            try:
+                if prof_dir.exists():
+                    prof_dir.rmdir()
+            except Exception:
+                pass
+        except Exception as e:
+            print("[WARN] file deletion failed:", e)
+
+        # حذف من قاعدة البيانات (محاولة عبر عدة أسماء دوال شائعة)
+        db = ProfileDB()
+        db.delete_profile(pid)
+        print(f"[DEBUG] Profile deleted from DB: id={pid}, name={name}")
+
+        # تحديث القائمة وتفريغ اللوحة اليسرى
+        page.refresh_profiles_list_v2()
+        page.profile_list.setCurrentRow(-1)
+        page.image_label.setPixmap(QPixmap())
+        page.lbl_name.setText("Name: —")
+        page.lbl_code.setText("Code: —")
+        page.lbl_size.setText("Size: —")
+        page.lbl_desc.setText("Description: —")
+        page.selected.update({"dxf": None, "pid": None, "name": None, "img": None})
+
+    del_btn.clicked.connect(on_delete)
+
     # أول تعبئة
-    refresh_profiles_list_v2()
+    page.refresh_profiles_list_v2()
 
     return page
 
@@ -387,11 +490,6 @@ def create_profile_manager_page_v2(parent):
 # صفحة: أدوات القطع (Tools Manager)
 # ======================================================================
 def create_tools_manager_page(tool_types, open_add_type_dialog_cb):
-    """
-    صفحة إدارة أدوات القطع.
-    - tool_types: dict من أنواع الأدوات (محمّلة من JSON)
-    - open_add_type_dialog_cb: callback لفتح نافذة إضافة نوع أداة جديدة
-    """
     page = QWidget()
     layout = QFormLayout(page)
     layout.setLabelAlignment(Qt.AlignLeft)
@@ -436,11 +534,9 @@ def create_tools_manager_page(tool_types, open_add_type_dialog_cb):
     type_combo.currentTextChanged.connect(on_type_changed)
     add_type_btn.clicked.connect(lambda: open_add_type_dialog_cb(type_combo, update_tool_image))
 
-    # تعيين صورة أولية إن وجدت
     if type_combo.currentText():
         update_tool_image(type_combo.currentText())
 
-    # attach vars to page عند الحاجة
     page._name_input = name_input
     page._dia_input = dia_input
     page._length_input = length_input
@@ -488,7 +584,6 @@ class AddToolTypeDialog(QDialog):
         Path(image_dir).mkdir(parents=True, exist_ok=True)
         path, _ = QFileDialog.getOpenFileName(self, "Choose image", image_dir)
         if path:
-            # خزن المسار نسبياً لمجلد frontend/..
             rel_root = os.path.join(base_dir, "..")
             self.image_path = os.path.relpath(path, rel_root)
             pixmap = QPixmap(path).scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation)
@@ -508,13 +603,12 @@ class AddToolTypeDialog(QDialog):
 # النافذة العائمة الرئيسية: تُجمّع كل الصفحات وتنسّقها
 # ======================================================================
 def create_tool_window(parent):
-    # تحميل أنواع الأدوات
     tool_types = _load_tool_types()
 
     dialog = DraggableDialog(parent)
     dialog.setObjectName("ToolFloatingWindow")
     dialog.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-    dialog.setFixedWidth(620)
+    dialog.setFixedWidth(640)
 
     dialog.setStyleSheet("""
         QDialog#ToolFloatingWindow {
@@ -564,10 +658,15 @@ def create_tool_window(parent):
     stacked = QStackedWidget(dialog)
     main_layout.addWidget(stacked)
 
-    # ====== الصفحات ======
-    extrude_page = create_extrude_page()                  # index 0
-    profile_page = create_profile_page()                  # index 1
-    manager_page_v2 = create_profile_manager_page_v2(parent)  # index 2
+    # صفحات
+    extrude_page = create_extrude_page()     # index 0
+    profile_page = create_profile_page()     # index 1
+
+    # getters لتمريرها للـ v2 للتعديل
+    profile_page_getter = lambda: profile_page
+    stacked_getter = lambda: stacked
+
+    manager_page_v2 = create_profile_manager_page_v2(parent, profile_page_getter, stacked_getter)  # index 2
 
     def _open_add_type_dialog(type_combo_widget, update_tool_image_cb):
         dlg = AddToolTypeDialog(tool_types, dialog)
@@ -584,8 +683,9 @@ def create_tool_window(parent):
     stacked.addWidget(manager_page_v2)    # 2 ✅ الصفحة المعتمدة
     stacked.addWidget(tools_page)         # 3
 
-    # خزّن مرجع صفحة v2 داخل الـ dialog لسهولة الوصول
+    # خزّن مرجع صفحة v2 وسياق التعديل داخل الـ dialog
     dialog.manager_page_v2 = manager_page_v2
+    dialog._edit_ctx = {"active": False, "pid": None, "orig_name": None, "orig_dxf": None, "orig_img": None}
 
     # ====== أزرار أسفل ======
     bottom_layout = QHBoxLayout()
@@ -598,7 +698,7 @@ def create_tool_window(parent):
 
     cancel_btn.clicked.connect(dialog.hide)
 
-    # ====== قاعدة البيانات ======
+    # ====== DB ======
     db = ProfileDB()
 
     # ====== منطق زر Apply ======
@@ -609,7 +709,6 @@ def create_tool_window(parent):
         if idx == 0:
             try:
                 parent.extrude_clicked_from_window()
-                # بعد الإكسترود: أضف العملية للوحة لو كانت متوفرة
                 profile_name = getattr(parent, "active_profile_name", None)
                 distance_val = getattr(parent, "last_extrude_distance", None)
                 if profile_name and distance_val and hasattr(parent, "op_browser"):
@@ -619,7 +718,7 @@ def create_tool_window(parent):
                 QMessageBox.critical(dialog, "Extrude Error", str(e))
             return
 
-        # 1️⃣ Profile: حفظ البروفايل وإنشاء الأصول (نسخ DXF + Snapshot)
+        # 1️⃣ Profile: حفظ/تعديل بروفايل
         elif idx == 1:
             name = profile_page._p_name.text().strip()
             if not name:
@@ -631,19 +730,23 @@ def create_tool_window(parent):
                 QMessageBox.information(dialog, "Profile", "Please choose a DXF file.")
                 return
 
+            edit_mode = bool(dialog._edit_ctx.get("active"))
+            orig_name = dialog._edit_ctx.get("orig_name")
+            orig_dxf = dialog._edit_ctx.get("orig_dxf")
+            pid = dialog._edit_ctx.get("pid")
+
             try:
-                # حمّل الشكل للتحقق وللصورة
                 shape = load_dxf_file(src_dxf)
                 if shape is None:
                     raise RuntimeError("Invalid DXF shape.")
 
-                # إعداد المسارات
-                profile_dir = Path("profiles") / name
-                profile_dir.mkdir(parents=True, exist_ok=True)
-                dxf_dst = profile_dir / f"{name}.dxf"
-                img_path = profile_dir / f"{name}.png"
+                # مسارات
+                new_dir = Path("profiles") / name
+                new_dir.mkdir(parents=True, exist_ok=True)
+                new_dxf = new_dir / f"{name}.dxf"
+                new_img = new_dir / f"{name}.png"
 
-                # تجهيز snapshot بالأسود وعلى خلفية رمادي
+                # Snapshot (أسود على رمادي)
                 small_display = profile_page._small_display
                 if small_display is not None and Quantity_Color is not None:
                     black = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
@@ -659,26 +762,81 @@ def create_tool_window(parent):
                     small_display.View.Redraw()
                     try:
                         from tools.profile_tools import _dump_display_png
-                        _dump_display_png(small_display, shape, img_path)
+                        _dump_display_png(small_display, shape, new_img)
                     except Exception as ex:
                         print("[WARN] Snapshot failed:", ex)
-                        # يستمر الحفظ حتى لو snapshot فشل
 
-                # نسخ ملف DXF
-                shutil.copy2(src_dxf, dxf_dst)
+                # نسخ DXF (overwrite)
+                shutil.copy2(src_dxf, new_dxf)
 
-                # حفظ في قاعدة البيانات
-                db.add_profile(
-                    name=name,
-                    code=profile_page._p_code.text().strip(),
-                    dimensions=profile_page._p_dims.text().strip(),
-                    notes=profile_page._p_notes.text().strip(),
-                    dxf_path=str(dxf_dst),
-                    brep_path="",
-                    image_path=str(img_path) if img_path.exists() else ""
-                )
+                if edit_mode:
+                    # ===== تعديل موجود =====
+                    # 1) تحديث DB
+                    updated = False
+                    for meth in ("update_profile", "update_profile_by_id", "edit_profile", "edit_profile_by_id"):
+                        if hasattr(db, meth):
+                            try:
+                                getattr(db, meth)(
+                                    pid=pid,
+                                    name=name,
+                                    code=profile_page._p_code.text().strip(),
+                                    dimensions=profile_page._p_dims.text().strip(),
+                                    notes=profile_page._p_notes.text().strip(),
+                                    dxf_path=str(new_dxf),
+                                    brep_path="",
+                                    image_path=str(new_img) if new_img.exists() else ""
+                                )
+                                updated = True
+                                break
+                            except Exception as e:
+                                print(f"[WARN] DB.{meth} failed:", e)
 
-                print("[DEBUG] Profile saved to DB. Switching to manager v2 and refreshing...")
+                    if not updated:
+                        # fallback: احذف ثم أضف من جديد
+                        for dmeth in ("delete_profile", "delete_profile_by_id", "remove_profile", "remove_profile_by_id"):
+                            if hasattr(db, dmeth):
+                                try:
+                                    getattr(db, dmeth)(pid)
+                                    break
+                                except Exception as e:
+                                    print(f"[WARN] DB.{dmeth} failed:", e)
+                        db.add_profile(
+                            name=name,
+                            code=profile_page._p_code.text().strip(),
+                            dimensions=profile_page._p_dims.text().strip(),
+                            notes=profile_page._p_notes.text().strip(),
+                            dxf_path=str(new_dxf),
+                            brep_path="",
+                            image_path=str(new_img) if new_img.exists() else ""
+                        )
+
+                    # 2) تنظيف مجلد الاسم القديم إذا تغيّر
+                    if orig_name and orig_name != name:
+                        old_dir = Path("profiles") / orig_name
+                        try:
+                            if old_dir.exists():
+                                # احذف ما تبقى (لو موجود)
+                                for p in old_dir.glob("*"):
+                                    p.unlink(missing_ok=True)
+                                old_dir.rmdir()
+                        except Exception as e:
+                            print("[WARN] remove old dir failed:", e)
+
+                    dialog._edit_ctx.update({"active": False, "pid": None, "orig_name": None, "orig_dxf": None, "orig_img": None})
+                    print(f"[DEBUG] Profile updated: id={pid} -> name={name}")
+
+                else:
+                    # ===== إنشاء جديد =====
+                    db.add_profile(
+                        name=name,
+                        code=profile_page._p_code.text().strip(),
+                        dimensions=profile_page._p_dims.text().strip(),
+                        notes=profile_page._p_notes.text().strip(),
+                        dxf_path=str(new_dxf),
+                        brep_path="",
+                        image_path=str(new_img) if new_img.exists() else ""
+                    )
+                    print(f"[DEBUG] Profile saved: name={name}")
 
                 # افتح صفحة v2 وحدّث القائمة بعد أن تظهر
                 show_page(2)
@@ -687,17 +845,13 @@ def create_tool_window(parent):
                 QMessageBox.information(dialog, "Saved", "Profile saved successfully.")
                 dialog.hide()
 
-                # أضف إلى اللوحة الجانبية إن وجدت
-                if hasattr(parent, "op_browser"):
-                    parent.op_browser.add_profile(name)
-
             except Exception as e:
                 QMessageBox.critical(dialog, "Error", f"Failed to save profile:\n{e}")
             return
 
-        # 2️⃣ Profiles Manager v2 → لا حاجة لـ Apply (زر OK داخل الصفحة)
+        # 2️⃣ Profiles Manager v2 → زر OK/EDIT/DELETE داخل الصفحة
         elif idx == 2:
-            QMessageBox.information(dialog, "Profiles", "Select a profile and press OK.")
+            QMessageBox.information(dialog, "Profiles", "Use OK / Edit / Delete buttons.")
             return
 
         # 3️⃣ Tools Page

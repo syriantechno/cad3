@@ -593,7 +593,20 @@ def create_tool_window(parent):
                     dxf_path=str(dxf_dst),
                     brep_path="",
                     image_path=str(img_path) if img_path.exists() else ""
+
                 )
+                # 6️⃣ تحديث صفحة Profile Manager v2 بعد الحفظ
+                from PyQt5.QtCore import QTimer
+                print("[DEBUG] Profile saved successfully, refreshing manager v2 page...")
+
+                show_page(3)  # افتح صفحة v2
+
+                QTimer.singleShot(0, lambda: (
+                        hasattr(manager_page_v2,
+                                'refresh_profiles_list_v2') and manager_page_v2.refresh_profiles_list_v2()
+                ))
+
+                # 7️⃣ رسالة نجاح
                 QMessageBox.information(dialog, "Saved", "Profile saved successfully.")
                 if hasattr(parent, "op_browser"):
                     parent.op_browser.add_profile(name)
@@ -627,7 +640,10 @@ def create_tool_window(parent):
             header.setText("Profiles Manager (old)")
         elif index == 3:
             header.setText("Profiles Manager (v2)")
-            manager_page_v2.refresh_profiles_list_v2()
+            if (manager_page_v2 is not None and
+                    hasattr(manager_page_v2, 'refresh_profiles_list_v2') and
+                    callable(manager_page_v2.refresh_profiles_list_v2)):
+                manager_page_v2.refresh_profiles_list_v2()
         elif index == 1:
             header.setText("Profile")
         elif index == 4:

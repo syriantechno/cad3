@@ -9,18 +9,19 @@ def create_topbar_tabs(parent):
 
     def create_tab(tab_name, tools):
         tab = QWidget()
-        tab.setMinimumHeight(100)  # ارتفاع Panel فقط
+        tab.setMinimumHeight(60)  # ارتفاع Panel فقط
         layout = QHBoxLayout(tab)
-        layout.setSpacing(10)
-        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setAlignment(Qt.AlignLeft)
+        layout.setSpacing(4)
+        layout.setContentsMargins(4, 0, 4, 0)
 
         for icon_path, text, callback, checkable in tools:
             btn = QToolButton(parent)
             btn.setIcon(QIcon(icon_path))
             btn.setText(text)
             btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            btn.setIconSize(QSize(60, 60))
-            btn.setFixedSize(90, 90)
+            btn.setIconSize(QSize(28, 28))
+            btn.setFixedSize(64, 64)
             btn.setCheckable(checkable)
 
             if checkable:
@@ -39,7 +40,6 @@ def create_topbar_tabs(parent):
         ("frontend/icons/open.png", "Open File", parent.load_dxf, False),
         ("frontend/icons/new.png", "New File", lambda: print("New File"), False),
         ("frontend/icons/save.png", "Save File", lambda: print("Save File"), False),
-        ("frontend/icons/save_as.png", "Save As", lambda: print("Save As"), False),
         ("frontend/icons/import.png", "Import File", lambda: print("Import"), False),
         ("frontend/icons/export.png", "Export File", lambda: print("Export"), False)
     ]
@@ -62,9 +62,9 @@ def create_topbar_tabs(parent):
 
     # ===== Tools Tab =====
     tools_tools = [
-        ("frontend/icons/grid.png", "Grid & Axes", parent.on_toggle_grid_axes, True),
+
         ("frontend/icons/tools.png", "Tools", lambda: print("Tools clicked"), False),
-        ("frontend/icons/tool_manager.png", "Tool Manager", lambda: parent.show_extrude_window(3), False)
+        ("frontend/icons/tools_manager.png", "Tool Manager", lambda: parent.show_extrude_window(3), False)
     ]
 
     create_tab("Tools", tools_tools)

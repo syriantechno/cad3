@@ -1,22 +1,22 @@
 TOPBAR_STYLE = """
 QTabWidget::pane {
     border: 0;
-    background: #E0E0E0;
+    background: #EAEAEA;
 }
 
 QTabBar::tab {
-    background: transparent;
+    background: #EAEAEA;
     color: #000000;
-    padding: 5px 10px;
+    padding: 0px 5px;
     margin: 0px;
     border-radius: 0px;
-    font-size: 14px;
-    min-width: 80px;
-    min-height: 40px;
+    font-size: 13px;
+    min-width: 60px;
+    min-height: 32px;
 }
 
 QTabBar::tab:selected {
-    border-bottom: 3px solid #3A84FF;
+    border-bottom: 2px solid #3A84FF;
     background-color: transparent;
     color: #000000;
 }
@@ -29,29 +29,30 @@ QToolButton {
     background-color: transparent;
     color: #000000;
     border: none;
-    border-bottom: 3px solid transparent; /* خط أسفل الشفافة افتراضيًا */
-    padding: 5px;
-    margin: 2px;
+    border-bottom: 2px solid transparent;
+    padding: 0px;
+    margin: 0px;
     font-size: 12px;
-    min-height: 80px;
-    min-width: 80px;
+    min-height: 48px;
+    min-width: 64px;
+    qproperty-iconSize: 36px;
 }
 
 QToolButton:hover, QToolButton:pressed {
-    background-color: transparent; /* إزالة أي تأثير هوفر أو ضغط */
+    background-color: transparent;
 }
 
 QToolButton:checked {
-    border-bottom: 3px solid #3A84FF; /* خط أزرق عند التحديد */
+    border-bottom: 2px solid #3A84FF;
 }
 
 QWidget {
-    background-color: #F5F5F5;
+    background-color: #EAEAEA;
 }
 """
 DOCK_STYLE = """
 QDockWidget {
-    background-color: #E0E0E0;
+    background-color: #EAEAEA;
     titlebar-close-icon: url(frontend/icons/close.png);
     titlebar-normal-icon: url(frontend/icons/float.png);
     font-size: 14px;
@@ -59,7 +60,7 @@ QDockWidget {
 }
 
 QWidget {
-    background-color: #F5F5F5;
+    background-color: #EAEAEA;
 }
 
 QLabel {

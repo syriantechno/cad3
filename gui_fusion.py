@@ -20,7 +20,7 @@ from PyQt5.QtCore import QTimer, Qt
 from dxf_tools import load_dxf_file
 from extrude_tools import extrude_shape, add_hole, preview_hole
 from frontend.topbar_tabs import create_topbar_tabs
-from frontend.floating_window import create_tool_window
+from frontend.window.floating_window import create_tool_window
 from frontend.tree import Tree
 from frontend.operation_browser import OperationBrowser
 from tools.tool_db import init_db, insert_tool, get_all_tools
@@ -124,7 +124,7 @@ class AlumCamGUI(QMainWindow):
         profile_layout.addWidget(self.profile_button)
 
         self.manage_profiles_button = QPushButton("📂 Manage Profiles")
-        self.manage_profiles_button.clicked.connect(lambda: self.show_extrude_window(2))
+        self.manage_profiles_button.clicked.connect(lambda: self.profiles_manager_page(2))
         profile_layout.addWidget(self.manage_profiles_button)
 
         # ===== Final Layout =====
@@ -461,5 +461,6 @@ class AlumCamGUI(QMainWindow):
 
         # فتح صفحة البروفايل (index 1)
         self.show_tool_page(1)
+        print("[DEBUG] تم استدعاء show_tool_page(1) لكن لن ننفذه مؤقتاً للاختبار")
 
 

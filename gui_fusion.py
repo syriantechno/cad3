@@ -124,7 +124,7 @@ class AlumCamGUI(QMainWindow):
         profile_layout.addWidget(self.profile_button)
 
         self.manage_profiles_button = QPushButton("📂 Manage Profiles")
-        self.manage_profiles_button.clicked.connect(lambda: self.show_extrude_window(3))
+        self.manage_profiles_button.clicked.connect(lambda: self.show_extrude_window(2))
         profile_layout.addWidget(self.manage_profiles_button)
 
         # ===== Final Layout =====

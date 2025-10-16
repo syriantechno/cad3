@@ -64,9 +64,6 @@ class AlumCamGUI(QMainWindow):
 
         self.viewer_widget = qtViewer3d(self)
         self.display = self.viewer_widget._display
-        self.ctx = self.display.Context
-        self._init_hover_style()
-
 
 
         # 1) فعّل event filter على ويدجت العارض
@@ -149,6 +146,7 @@ class AlumCamGUI(QMainWindow):
         main_layout.addLayout(btn_layout)
         main_layout.addLayout(profile_layout)
         self.setCentralWidget(main_widget)
+
 
 
 
@@ -239,27 +237,6 @@ class AlumCamGUI(QMainWindow):
         self.loaded_shape = None
         self.hole_preview = None
         self.extrude_axis = "Y"
-
-    def _init_hover_style(self):
-        """
-        Fallback patch for transitional PythonOCC 7.9 builds.
-        Uses DefaultDrawer() HighlightStyle() directly if SetHighlightColor / Graphic3d_HighlightStyle are unavailable.
-        """
-        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
-
-        hover_color = Quantity_Color(1.0, 1.0, 0.0, Quantity_TOC_RGB)  # أصفر
-        select_color = Quantity_Color(0.0, 1.0, 0.0, Quantity_TOC_RGB)  # أخضر
-
-        drawer = self.ctx.DefaultDrawer()
-
-        # بعض الإصدارات فيها HighlightStyle() و SelectionStyle() بشكل مباشر
-        try:
-            drawer.HighlightStyle().SetColor(hover_color)
-            drawer.SelectionStyle().SetColor(select_color)
-            print("✅ Applied hover style using DefaultDrawer() fallback.")
-        except AttributeError:
-            print("⚠️ No HighlightStyle() available in this build. Hover color patch skipped.")
-        self.ctx.UpdateCurrentViewer()
 
     def display_shape(self, shape):
         self.display.EraseAll()

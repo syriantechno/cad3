@@ -26,10 +26,8 @@ from frontend.operation_browser import OperationBrowser
 from tools.tool_db import init_db, insert_tool, get_all_tools
 logging.basicConfig(level=logging.DEBUG)
 from frontend.window.floating_window import create_tool_window
-from viewer import OCCViewer
-from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
-
+from file_ops import (export_step, import_step, load_project, save_file)
 # OCC viewer
 try:
     from OCC.Display.qtDisplay import qtViewer3d
@@ -623,4 +621,19 @@ class AlumCamGUI(QMainWindow):
         self.show_tool_page(1)
         print("[DEBUG] تم استدعاء show_tool_page(1) لكن لن ننفذه مؤقتاً للاختبار")
 
+        # دوال تغليف تستخدمها الأزرار في التوب بار:
 
+    def save_file():
+        file_ops.save_file_dialog(parent)
+
+    def save_project(self, shape, path, metadata):
+        return save_file(shape, path, metadata)
+
+    def load_project(self, path):
+        return load_project(path)
+
+    def import_step(self, path):
+        return import_step(path)
+
+    def export_step(self, shape, path):
+        return export_step(shape, path)

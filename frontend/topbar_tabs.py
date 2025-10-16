@@ -2,6 +2,9 @@ from PyQt5.QtWidgets import QWidget, QTabWidget, QHBoxLayout, QToolButton
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt, QSize
 from frontend.style import TOPBAR_STYLE
+from file_ops import (export_step, import_step, load_project, save_file)
+from PyQt5.QtWidgets import QFileDialog
+
 
 def create_topbar_tabs(parent):
     tabs = QTabWidget()
@@ -35,13 +38,40 @@ def create_topbar_tabs(parent):
 
         tabs.addTab(tab, tab_name)
 
+    def open_file():
+        path, _ = QFileDialog.getOpenFileName(parent, "Open Project", "", "Alucam Project (*.alucam)")
+        if path:
+            shape, meta = parent.load_project(path)
+            if shape:
+                parent.current_shape = shape
+                parent.display.DisplayShape(shape, update=True)
+
+    def save_file():
+        path, _ = QFileDialog.getSaveFileName(parent, "Save Project", "", "Alucam Project (*.alucam)")
+        if path:
+            metadata = {"name": "My Project"}
+            parent.save_project(parent.current_shape, path, metadata)
+
+    def import_file():
+        path, _ = QFileDialog.getOpenFileName(parent, "Import STEP", "", "STEP files (*.step *.stp)")
+        if path:
+            shape = parent.import_step(path)
+            if shape:
+                parent.current_shape = shape
+                parent.display.DisplayShape(shape, update=True)
+
+    def export_file():
+        path, _ = QFileDialog.getSaveFileName(parent, "Export STEP", "", "STEP files (*.step *.stp)")
+        if path:
+            parent.export_step(parent.current_shape, path)
+
     # ===== Home Tab =====
     home_tools = [
-        ("frontend/icons/open.png", "Open File", parent.load_dxf, False),
+        ("frontend/icons/open.png", "Open File", open_file, False),
         ("frontend/icons/new.png", "New File", lambda: print("New File"), False),
-        ("frontend/icons/save.png", "Save File", lambda: print("Save File"), False),
-        ("frontend/icons/import.png", "Import File", lambda: print("Import"), False),
-        ("frontend/icons/export.png", "Export File", lambda: print("Export"), False)
+        ("frontend/icons/save.png", "Save File", save_file, False),
+        ("frontend/icons/import.png", "Import File", import_file, False),
+        ("frontend/icons/export.png", "Export File", export_file, False)
     ]
     create_tab("Home", home_tools)
 

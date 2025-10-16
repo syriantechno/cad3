@@ -1,7 +1,10 @@
-import sys
-from PyQt6.QtWidgets import QApplication
-from frontend.floating_window import AddToolTypeDialog  # غيّر المسار حسب موقع الكلاس
-if __name__ == "__main__":
-    app = QApplication(sys.argv)        # ✅ هذا أول شيء لازم يتنفذ
-    dialog = AddToolTypeDialog({})      # ✅ بعد إنشاء QApplication
-    dialog.exec()
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
+from OCC.Core import BRepTools
+
+print("🧪 إنشاء شكل Box...")
+shape = BRepPrimAPI_MakeBox(10, 20, 30).Shape()
+print("✅ Box جاهز")
+
+print("💾 تجربة الحفظ باستخدام BRepTools.breptools_Write...")
+BRepTools.breptools_Write(shape, "test_box.brep")
+print("✅ تم الحفظ بدون كراش")

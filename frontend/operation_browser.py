@@ -84,3 +84,21 @@ class OperationBrowser(QTreeWidget):
         else:
             category = "unknown"
         self.item_selected.emit(category, item.text(0))
+
+from PyQt5.QtWidgets import QMenu, QInputDialog
+
+def contextMenuEvent(self, event):
+    item = self.itemAt(event.pos())
+    if item and item != self.profiles_root:
+        menu = QMenu(self)
+        rename_action = menu.addAction("Rename")
+        delete_action = menu.addAction("Delete")
+        action = menu.exec_(self.mapToGlobal(event.pos()))
+        if action == rename_action:
+            new_name, ok = QInputDialog.getText(self, "Rename", "New name:", text=item.text(0))
+            if ok and new_name:
+                item.setText(0, new_name)
+        elif action == delete_action:
+            parent = item.parent()
+            if parent:
+                parent.removeChild(item)

@@ -27,7 +27,7 @@ from tools.tool_db import init_db, insert_tool, get_all_tools
 logging.basicConfig(level=logging.DEBUG)
 from frontend.window.floating_window import create_tool_window
 
-from file_ops import (export_step, import_step, load_project, save_file)
+
 # OCC viewer
 try:
     from OCC.Display.qtDisplay import qtViewer3d
@@ -235,6 +235,12 @@ class AlumCamGUI(QMainWindow):
         self.loaded_shape = None
         self.hole_preview = None
         self.extrude_axis = "Y"
+
+
+
+    def display_shape_with_axes(self, shape):
+        self.display.DisplayShape(shape, update=True)
+        self.display.DisplayTrihedron()
 
     def display_shape(self, shape):
         self.display.EraseAll()
@@ -493,7 +499,7 @@ class AlumCamGUI(QMainWindow):
         """Called from Apply button in extrude floating window."""
         try:
             if not self.loaded_shape:
-                print("⚠️ No shape loaded for extrusion.")
+                print("⚠️ لا يوجد شكل محمّل لتنفيذ Extrude.")
                 return
 
             axis = self.axis_combo.currentText()
@@ -509,15 +515,12 @@ class AlumCamGUI(QMainWindow):
             body_color = Quantity_Color(0.545, 0.533, 0.498, Quantity_TOC_RGB)
             ais_shape = AIS_Shape(result_shape)
             ais_shape.SetColor(body_color)
-            ais_shape.SetDisplayMode(1)  # عرض الحواف تلقائيًا
+            ais_shape.SetDisplayMode(1)
 
             self.display.EraseAll()
-
-            # ✅ عرض الجسم
             self.display.Context.Display(ais_shape, False)
             self.display.Context.Activate(ais_shape, 0, True)
             self.display.Context.SetColor(ais_shape, body_color, False)
-
 
             # ✅ عرض الحواف بلون أسود نقي
             black = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
@@ -540,8 +543,13 @@ class AlumCamGUI(QMainWindow):
 
             self.display.FitAll()
 
+            # ✅ إخفاء نافذة الأدوات
             if self.tool_dialog.isVisible():
                 self.tool_dialog.hide()
+
+            # ✅ ربط العملية بشجرة العمليات
+            profile_name = "Sketch 1"  # أو استخرج الاسم من مكان آخر
+            extrude_item = self.browser.add_extrude(profile_name, distance, shape=result_shape)
 
         except Exception as e:
             print(f"extrude_clicked_from_window error: {e}")
@@ -623,17 +631,35 @@ class AlumCamGUI(QMainWindow):
 
         # دوال تغليف تستخدمها الأزرار في التوب بار:
 
-    def save_file():
-        file_ops.save_file_dialog(parent)
+    def save_file(self):
+        from file_ops import save_file_dialog
+        save_file_dialog(self)
 
-    def save_project(self, shape, path, metadata):
-        return save_file(shape, path, metadata)
+    def open_file(self):
+        from PyQt5.QtWidgets import QFileDialog
+        from file_ops import load_project
 
-    def load_project(self, path):
-        return load_project(path)
+        path, _ = QFileDialog.getOpenFileName(self, "Open Project", "", "Alucam Project (*.alucam)")
+        if path:
+            shape, metadata = load_project(path)
+            if shape:
+                self.loaded_shape = shape
+                self.display.DisplayShape(shape, update=True)
+                print("📦 Metadata:", metadata)
 
-    def import_step(self, path):
-        return import_step(path)
+    def export_stl_dialog(self):
+        from PyQt5.QtWidgets import QFileDialog
+        from file_ops import export_stl
 
-    def export_step(self, shape, path):
-        return export_step(shape, path)
+        path, _ = QFileDialog.getSaveFileName(self, "Export STL", "", "STL files (*.stl)")
+        if path:
+            if not path.lower().endswith(".stl"):
+                path += ".stl"
+            export_stl(self.loaded_shape, path)
+
+    def new_file(self):
+        self.loaded_shape = None
+        self.display.EraseAll()
+        self.display.Repaint()
+        self.metadata = {}
+        print("🆕 تم إنشاء مشروع جديد فارغ")

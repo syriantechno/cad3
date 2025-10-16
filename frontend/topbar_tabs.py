@@ -2,7 +2,7 @@ from PyQt5.QtWidgets import QWidget, QTabWidget, QHBoxLayout, QToolButton
 from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt, QSize
 from frontend.style import TOPBAR_STYLE
-from file_ops import (export_step, import_step, load_project, save_file)
+
 from PyQt5.QtWidgets import QFileDialog
 
 
@@ -67,11 +67,12 @@ def create_topbar_tabs(parent):
 
     # ===== Home Tab =====
     home_tools = [
-        ("frontend/icons/open.png", "Open File", open_file, False),
-        ("frontend/icons/new.png", "New File", lambda: print("New File"), False),
-        ("frontend/icons/save.png", "Save File", save_file, False),
-        ("frontend/icons/import.png", "Import File", import_file, False),
-        ("frontend/icons/export.png", "Export File", export_file, False)
+        ("frontend/icons/open.png", "Open File", lambda: parent.open_file(), False),
+        ("frontend/icons/new.png", "New File", lambda: parent.new_file(), False),
+        ("frontend/icons/save.png", "Save File", lambda: parent.save_file(), False),
+        ("frontend/icons/import.png", "Import File", lambda: parent.load_dxf(), False),
+        ("frontend/icons/export.png", "Export File", lambda: parent.export_stl_dialog(), False)
+
     ]
     create_tab("Home", home_tools)
 

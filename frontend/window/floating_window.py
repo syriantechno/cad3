@@ -8,6 +8,11 @@ import os, json, shutil
 
 from dxf_tools import load_dxf_file
 from tools.database import ProfileDB
+from frontend.style import TOOL_FLOATING_WINDOW_STYLE  # أو أي اسم للدالة اللي تستخدمها لتطبيق الستايل
+
+# بعد إنشاء dialog
+
+
 
 # قبل
 # extrude_page = create_extrude_page()
@@ -17,6 +22,7 @@ from frontend.window.extrude_window import ExtrudeWindow
 from frontend.window.profile_window import ProfileWindow
 from frontend.window.profiles_manager_window import ProfilesManagerWindow
 from frontend.window.tools_manager_window import ToolsManagerWindow
+from frontend.window.profiles_manager_v2_window import create_profile_manager_page_v2
 
 
 try:
@@ -99,8 +105,19 @@ def create_tool_window(parent):
     dialog = DraggableDialog(parent)
     dialog.setObjectName("ToolFloatingWindow")
     dialog.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-    dialog.setFixedWidth(600)
-    dialog.setStyleSheet(""" /* … stylesheet كما في الكود الأصلي … */ """)
+    dialog.setMinimumWidth(380)
+    dialog.setMaximumWidth(500)
+    # 🟡 تأكد من وجود edit context
+    dialog._edit_ctx = {
+        "active": False,
+        "pid": None,
+        "orig_name": None,
+        "orig_dxf": None,
+        "orig_img": None
+    }
+
+    dialog.setStyleSheet(TOOL_FLOATING_WINDOW_STYLE)
+
 
     main_layout = QVBoxLayout(dialog)
     main_layout.setContentsMargins(10, 10, 10, 10)
@@ -122,7 +139,7 @@ def create_tool_window(parent):
     # إنشاء الصفحات
     extrude_page = ExtrudeWindow(parent)
     profile_page = ProfileWindow(dialog, load_dxf=load_dxf_file, qtViewer3d=qtViewer3d)
-
+    profiles_manager_v2_page = create_profile_manager_page_v2(parent, profile_page_getter=lambda: profile_page, stacked_getter=lambda: stacked )
     profiles_manager_page = ProfilesManagerWindow(dialog, load_dxf=load_dxf_file, parent_main=parent)
     tools_page = ToolsManagerWindow(tool_types, open_add_type_dialog_cb=None)  # لاحقًا تضيف الكول باك
 
@@ -131,12 +148,14 @@ def create_tool_window(parent):
     stacked.addWidget(profile_page)             # index 1
     stacked.addWidget(profiles_manager_page)    # index 2
     stacked.addWidget(tools_page)               # index 3 ✅
+    stacked.addWidget(profiles_manager_v2_page) # index 4 ✅
 
     # ✅ حفظ المراجع داخل الـ dialog
     dialog.extrude_page = extrude_page
     dialog.profile_page = profile_page
     dialog.profiles_manager_page = profiles_manager_page
     dialog.tools_page = tools_page
+    dialog.profiles_manager_v2_page = profiles_manager_v2_page
 
     # أزرار أسفل
     bottom_layout = QHBoxLayout()

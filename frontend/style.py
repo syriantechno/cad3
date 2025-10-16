@@ -131,3 +131,31 @@ QPushButton#cancelBtn:hover {
 }
 """
 
+TOOL_FLOATING_WINDOW_STYLE = """
+    QDialog#ToolFloatingWindow {
+        background-color: #EAEAEA;
+        border: 1px solid #b4b4b4;
+        border-radius: 8px;
+    }
+    QLabel { font-size: 13px; color: #333; }
+    QComboBox, QDoubleSpinBox, QSpinBox, QLineEdit {
+        min-height: 28px; font-size: 13px; border: 1px solid #ccc;
+        border-radius: 4px; background: white;
+    }
+    QComboBox:focus, QDoubleSpinBox:focus, QSpinBox:focus, QLineEdit:focus {
+        border: 1px solid #0078d4;
+    }
+    QPushButton {
+        min-height: 30px; min-width: 100px; font-size: 13px; border-radius: 4px;
+    }
+    QPushButton#ApplyBtn {
+        background-color: #0078d4; color: white;
+    }
+    QPushButton#ApplyBtn:hover { background-color: #005ea2; }
+    QPushButton#CancelBtn {
+        background-color: #e0e0e0; color: black;
+    }
+    QPushButton#CancelBtn:hover { background-color: #cacaca; }
+    QFrame#line { background:#dcdcdc; height:1px; }
+"""
+

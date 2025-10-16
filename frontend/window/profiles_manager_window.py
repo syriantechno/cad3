@@ -5,12 +5,18 @@ from pathlib import Path
 from .utils_window import safe_exists
 
 class ProfilesManagerWindow(QWidget):
+
+
+
+
     def __init__(self, dialog_parent, load_dxf=None, parent_main=None):
         """
+
         :param dialog_parent: والد الـ dialog (المتحكم في النافذة العائمة)
         :param load_dxf: دالة تحميل DXF
         :param parent_main: النافذة الرئيسية التي تحتوي display و op_browser
         """
+        print("[DEBUG] ProfilesManagerWindow init start")
         super().__init__(dialog_parent)
         self._dialog_parent = dialog_parent
         self._load_dxf = load_dxf
@@ -61,7 +67,7 @@ class ProfilesManagerWindow(QWidget):
                 img_label = QLabel()
                 img_label.setFixedSize(64, 64)
                 img_label.setFrameShape(QFrame.Box)
-                if _safe_exists(img):
+                if safe_exists(img):
                     pix = QPixmap(img).scaled(64, 64, Qt.KeepAspectRatio, Qt.SmoothTransformation)
                     img_label.setPixmap(pix)
                 else:
@@ -80,3 +86,4 @@ class ProfilesManagerWindow(QWidget):
         # حفظ المراجع للوصول منها من floating_window
         self._grid = grid
         self.refresh_profiles_list = refresh_profiles_list
+        print("[DEBUG] ProfilesManagerWindow init end")

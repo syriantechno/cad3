@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (
     QDoubleSpinBox, QLineEdit, QToolBar, QAction
 )
 from PyQt5.QtCore import QTimer, Qt
-
+from frontend.utils.viewer_colors import setup_viewer_colors
 # Project tools (expected to exist in your repo)
 from dxf_tools import load_dxf_file
 from extrude_tools import extrude_shape, add_hole, preview_hole
@@ -25,6 +25,9 @@ from frontend.tree import Tree
 from frontend.operation_browser import OperationBrowser
 from tools.tool_db import init_db, insert_tool, get_all_tools
 logging.basicConfig(level=logging.DEBUG)
+from frontend.window.floating_window import create_tool_window
+from viewer import OCCViewer
+
 
 # OCC viewer
 try:
@@ -57,9 +60,13 @@ class AlumCamGUI(QMainWindow):
         from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
         # ===== Viewer & Browser =====
+
         self.viewer_widget = qtViewer3d(self)
         self.display = self.viewer_widget._display
-        QTimer.singleShot(100, self._late_init_view)
+
+
+
+
 
         self.draw_axes()
 
@@ -120,11 +127,11 @@ class AlumCamGUI(QMainWindow):
 
         profile_layout = QHBoxLayout()
         self.profile_button = QPushButton("📐 Profile")
-        self.profile_button.clicked.connect(lambda: self.show_extrude_window(1))
+        self.profile_button.clicked.connect(self.open_add_profile_page)   # ✅ فتح صفحة Profile
         profile_layout.addWidget(self.profile_button)
 
         self.manage_profiles_button = QPushButton("📂 Manage Profiles")
-        self.manage_profiles_button.clicked.connect(lambda: self.profiles_manager_page(2))
+        self.manage_profiles_button.clicked.connect(lambda: self.show_tool_page(4))  # ✅ صفحة إدارة البروفايلات
         profile_layout.addWidget(self.manage_profiles_button)
 
         # ===== Final Layout =====
@@ -135,23 +142,106 @@ class AlumCamGUI(QMainWindow):
         main_layout.addLayout(profile_layout)
         self.setCentralWidget(main_widget)
 
+        def _init_hover_style(self):
+            """تهيئة ألوان التفاعل (Hover / Selection) بأمان بعد تحميل الـ Viewer."""
+            print("[DEBUG] Applying hover & selection styles...")
+
+            try:
+                ctx = self.display.Context
+            except AttributeError:
+                print("[ERROR] display.Context غير جاهز بعد.")
+                return
+
+            from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+            from OCC.Core.Prs3d import Prs3d_Drawer
+
+            # 🟡 لون الـ Hover
+            hover_color = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)  # أسود ناعم
+            hover_drawer = Prs3d_Drawer()
+            hover_drawer.SetColor(hover_color)
+            hover_drawer.SetTransparency(0.0)
+            hover_drawer.SetDisplayMode(1)
+            ctx.SetHighlightStyle(hover_drawer)
+
+            # 🟠 لون التحديد (Selection)
+            select_color = Quantity_Color(1.0, 0.6, 0.0, Quantity_TOC_RGB)  # برتقالي
+            select_drawer = Prs3d_Drawer()
+            select_drawer.SetColor(select_color)
+            select_drawer.SetTransparency(0.0)
+            select_drawer.SetDisplayMode(1)
+            ctx.SetSelectionStyle(select_drawer)
+
+            print("[✅] Hover & selection styles applied.")
+
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(800, self._init_hover_style)
+
         # ===== Background Setup =====
         def apply_background():
             print("⚡ Applying background color...")
 
             try:
+
                 self.display.set_bg_gradient_color(
-                    Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
-                    Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB),
+                    Quantity_Color(0.92, 0.92, 0.92, Quantity_TOC_RGB),
+                    Quantity_Color(0.92, 0.92, 0.92, Quantity_TOC_RGB),
                     True
                 )
-                self.display.View.FitAll()
+                self.display._display.View.FitAll()  # ✅ الصحيح
+                self.display._display.View.Update()  # مهم لتحديث الفيو
                 print("✅ الخلفية تم تطبيقها")
             except Exception as e:
                 print(f"❌ خطأ أثناء تطبيق الخلفية: {e}")
 
-        QTimer.singleShot(1500, apply_background)
+
         self.draw_axes()
+
+        def _apply_view_theme_once(self):
+            """تطبيق الخلفية + الشبكة + ألوان الهوفر/التحديد مرة واحدة فقط بعد أول عرض شكل."""
+            if getattr(self, "_theme_applied", False):
+                return
+
+            view = self.display.View
+            ctx = self.display.Context
+            viewer = self.display.Viewer
+
+            try:
+                # الخلفية (تدرّج رأسي لطيف)
+                from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+                top = Quantity_Color(0.92, 0.92, 0.92, Quantity_TOC_RGB)
+                bottom = Quantity_Color(1.00, 1.00, 1.00, Quantity_TOC_RGB)
+                try:
+                    # 1 = Vertical (أعلى → أسفل)
+                    view.SetBgGradientColors(top, bottom, 1, True)
+                    view.Redraw()
+                except Exception:
+                    pass
+
+                # الشبكة (على مستوى الـ Viewer)
+                try:
+                    from OCC.Core.Aspect import Aspect_GT_Rectangular, Aspect_GDM_Lines
+                    from OCC.Core.Quantity import Quantity_NOC_BLACK
+                    viewer.ActivateGrid(Aspect_GT_Rectangular, Aspect_GDM_Lines)
+                    viewer.SetPrivilegedPlane(0.0, 0.0, 1.0, 0.0)
+                    viewer.SetGridColor(Quantity_NOC_BLACK)
+                    viewer.DisplayGrid()
+                except Exception:
+                    pass
+
+                # ألوان hover و selection
+                try:
+                    hover = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)  # رمادي فاتح بدل التركواز
+                    select = Quantity_Color(1.0, 0.6, 0.0, Quantity_TOC_RGB)  # برتقالي باهت
+                    ctx.SetHighlightColor(hover)
+                    ctx.SetSelectionColor(select)
+                    ctx.SetAutomaticHighlight(True)
+                except Exception:
+                    pass
+
+                self._theme_applied = True
+                print("✅ View theme applied once (background, grid, hover/selection).")
+            except Exception as e:
+                print(f"[WARN] theme apply skipped: {e}")
 
         # ===== Floating tool window =====
         self.tool_dialog, self.show_tool_page = create_tool_window(self)
@@ -174,31 +264,39 @@ class AlumCamGUI(QMainWindow):
         self.hole_preview = None
         self.extrude_axis = "Y"
 
-    from OCC.Core.AIS import AIS_Shape
-    from OCC.Core.TopExp import TopExp_Explorer
-    from OCC.Core.TopAbs import TopAbs_EDGE
-    from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
-
     def display_shape(self, shape):
         self.display.EraseAll()
 
-        # عرض الشكل الأساسي بلون رمادي فاتح
+        # عرض الشكل الأساسي
+        from OCC.Core.AIS import AIS_Shape
+        from OCC.Core.TopExp import TopExp_Explorer
+        from OCC.Core.TopAbs import TopAbs_EDGE
+        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+
         ais_shape = AIS_Shape(shape)
         light_gray = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
         self.display.Context.Display(ais_shape, False)
         self.display.Context.SetColor(ais_shape, light_gray, False)
 
-        # عرض الحواف بلون أسود نقي
+        # حواف سوداء (اختياري)
         black = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
         edge_explorer = TopExp_Explorer(shape, TopAbs_EDGE)
         while edge_explorer.More():
             edge = edge_explorer.Current()
-            edge_shape = AIS_Shape(edge)
-            self.display.Context.Display(edge_shape, False)
-            self.display.Context.SetColor(edge_shape, black, False)
+            edge_ais = AIS_Shape(edge)
+            self.display.Context.Display(edge_ais, False)
+            self.display.Context.SetColor(edge_ais, black, False)
             edge_explorer.Next()
 
-        # إعادة عرض المحاور
+        # 👇 هنا نطبّق الثيم "بعد" أول عرض شكل
+        self._apply_view_theme_once()
+
+        # ✅ تفعيل الهوفر بشكل صريح
+        ctx = self.display.Context
+        ctx.SetAutomaticHighlight(True)
+        ctx.UpdateCurrentViewer()
+
+        # إعادة عرض المحاور إن كانت موجودة
         if self._axis_x and self._axis_y and self._axis_z:
             ctx = self.display.Context
             ctx.Display(self._axis_x, True)
@@ -206,8 +304,6 @@ class AlumCamGUI(QMainWindow):
             ctx.Display(self._axis_z, True)
 
         self.display.FitAll()
-
-
 
     def draw_axes(self):
         from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1
@@ -242,7 +338,11 @@ class AlumCamGUI(QMainWindow):
         ctx.Display(self._axis_z, True)
 
     # ===== Late init =====
-    def _late_init_view(self):
+
+
+
+
+
         from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB, Quantity_NOC_BLACK
         from OCC.Core.Aspect import Aspect_GT_Rectangular, Aspect_GDM_Lines
 
@@ -287,7 +387,7 @@ class AlumCamGUI(QMainWindow):
         print("[view] تم إعادة رسم العرض")
 
         self.display.Context.UpdateCurrentViewer()
-        self.draw_axes()
+
         print("[context] تم تحديث السياق")
 
     def on_toggle_grid_axes(self, checked: bool):

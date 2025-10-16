@@ -490,12 +490,13 @@ class AlumCamGUI(QMainWindow):
             self.display.Context.Display(self._axis_y, True)
         if self._axis_z:
             self.display.Context.Display(self._axis_z, True)
-            item = self.op_browser.add_profile("DXF Profile")
-            item.shape = self.loaded_shape
+            self.tree.add_item("DXF Profile", shape=self.loaded_shape, callback=self.display_shape)
 
     def _safe_display_shape(self):
         try:
             self.display_shape_with_axes(self.loaded_shape)
+            item = self.op_browser.add_profile("DXF Profile")
+            item.shape = shape
         except Exception as e:
             print(f"Display failed: {e}")
 
@@ -519,7 +520,7 @@ class AlumCamGUI(QMainWindow):
             body_color = Quantity_Color(0.545, 0.533, 0.498, Quantity_TOC_RGB)
             ais_shape = AIS_Shape(result_shape)
             ais_shape.SetColor(body_color)
-            ais_shape.SetDisplayMode(3)  # عرض الحواف تلقائيًا
+            ais_shape.SetDisplayMode(1)  # عرض الحواف تلقائيًا
 
             self.display.EraseAll()
 
@@ -541,8 +542,6 @@ class AlumCamGUI(QMainWindow):
                 edge_explorer.Next()
 
             self.loaded_shape = result_shape
-            extrude_item = self.op_browser.add_extrude("Extrude", distance)
-            extrude_item.shape = result_shape
 
             # ✅ إعادة عرض المحاور
             ctx = self.display.Context
@@ -568,39 +567,35 @@ class AlumCamGUI(QMainWindow):
         axis = self.axis_hole_combo.currentText()
         self.loaded_shape = add_hole(self.loaded_shape, x, y, z, dia, axis)
         self.display_shape_with_axes(self.loaded_shape)
+        extrude_item = self.op_browser.add_extrude("Sketch 1", distance)
+        extrude_item.shape = result_shape
 
     def preview_clicked(self):
         if not self.loaded_shape:
             return
 
-        try:
-            x = float(self.hole_x.text())
-            y = float(self.hole_y.text())
-            z = float(self.hole_z.text())
-            dia = float(self.hole_dia.text())
-        except ValueError:
-            print("❌ قيم الحفر غير صالحة (يجب أن تكون أرقام)")
-            return
-
+        x = float(self.hole_x.text())
+        y = float(self.hole_y.text())
+        z = float(self.hole_z.text())
+        dia = float(self.hole_dia.text())
         axis = self.axis_hole_combo.currentText()
 
-        self.display.EraseAll()
+        if self.hole_preview:
+            self.display.EraseAll()
 
+        # عرض الشكل الأساسي بلون رمادي غامق
         from OCC.Core.AIS import AIS_Shape
         from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
-
-
-        dark_gray = Quantity_Color(0.545, 0.533, 0.498, Quantity_TOC_RGB)
+        dark_gray = Quantity_Color(0.3, 0.3, 0.3, Quantity_TOC_RGB)
         ais_loaded = AIS_Shape(self.loaded_shape)
         ais_loaded.SetColor(dark_gray)
         self.display.Context.Display(ais_loaded, True)
 
-        self.hole_preview = preview_hole(x, y, z, dia, axis)
-        if not self.hole_preview or self.hole_preview.IsNull():
-            print("❌ فشل في إنشاء معاينة الحفرة")
-            return
+        self.display_shape_with_axes(self.loaded_shape)
 
+        # عرض المعاينة باللون الأحمر
+        self.hole_preview = preview_hole(x, y, z, dia, axis)
         self.display.DisplayShape(self.hole_preview, color="RED", update=True)
 
     def open_add_profile_page(self):
@@ -651,27 +646,9 @@ class AlumCamGUI(QMainWindow):
     def load_project(self, path):
         return load_project(path)
 
-    def new_file(self):
-        self.loaded_shape = None
-        self.display.EraseAll()
-        self.display.Repaint()
-        self.metadata = {}
-        print("🆕 تم إنشاء مشروع جديد فارغ")
-
     def delete_selected_operation(self):
         item = self.op_browser.currentItem()
         if item and item.parent():
             parent = item.parent()
             parent.removeChild(item)
-
-            # عرض آخر عنصر متبقي
-            remaining = parent.childCount()
-            if remaining > 0:
-                last_item = parent.child(remaining - 1)
-                shape = getattr(last_item, "shape", None)
-                if shape and not shape.IsNull():
-                    self.display_shape_with_axes(shape)
-                else:
-                    self.display.EraseAll()
-            else:
-                self.display.EraseAll()
+            self.display.EraseAll()

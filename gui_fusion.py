@@ -65,8 +65,12 @@ class AlumCamGUI(QMainWindow):
         self.display = self.viewer_widget._display
 
 
+        # 1) فعّل event filter على ويدجت العارض
+        self.viewer_widget.installEventFilter(self)
 
-
+        # 2) اطبع حالة الـ Context بعد 1.5 ثانية (بعد ما يجهز العرض)
+        from PyQt5.QtCore import QTimer
+        QTimer.singleShot(1500, self._debug_hover_state)
 
         self.draw_axes()
 
@@ -174,7 +178,7 @@ class AlumCamGUI(QMainWindow):
             print("[✅] Hover & selection styles applied.")
 
             from PyQt5.QtCore import QTimer
-            QTimer.singleShot(800, self._init_hover_style)
+
 
         # ===== Background Setup =====
         def apply_background():
@@ -267,43 +271,129 @@ class AlumCamGUI(QMainWindow):
     def display_shape(self, shape):
         self.display.EraseAll()
 
-        # عرض الشكل الأساسي
         from OCC.Core.AIS import AIS_Shape
-        from OCC.Core.TopExp import TopExp_Explorer
-        from OCC.Core.TopAbs import TopAbs_EDGE
         from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
+        # جسم واحد مظلل + حواف (OCCT يتكفل بالحواف تلقائيًا)
         ais_shape = AIS_Shape(shape)
+        ais_shape.SetDisplayMode(1)  # 0=wireframe, 1=shaded (مع حواف)
+
         light_gray = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
-        self.display.Context.Display(ais_shape, False)
-        self.display.Context.SetColor(ais_shape, light_gray, False)
 
-        # حواف سوداء (اختياري)
-        black = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
-        edge_explorer = TopExp_Explorer(shape, TopAbs_EDGE)
-        while edge_explorer.More():
-            edge = edge_explorer.Current()
-            edge_ais = AIS_Shape(edge)
-            self.display.Context.Display(edge_ais, False)
-            self.display.Context.SetColor(edge_ais, black, False)
-            edge_explorer.Next()
-
-        # 👇 هنا نطبّق الثيم "بعد" أول عرض شكل
-        self._apply_view_theme_once()
-
-        # ✅ تفعيل الهوفر بشكل صريح
         ctx = self.display.Context
-        ctx.SetAutomaticHighlight(True)
-        ctx.UpdateCurrentViewer()
+        ctx.Display(ais_shape, True)
+        ctx.SetColor(ais_shape, light_gray, False)
 
-        # إعادة عرض المحاور إن كانت موجودة
-        if self._axis_x and self._axis_y and self._axis_z:
-            ctx = self.display.Context
+        # ✅ طبّق ستايل الهوفر/التحديد الآن (بعد أن صار هناك AIS في المشهد)
+        self.apply_hover_and_selection_style()
+        c = ctx.HighlightStyle().Color()
+        print("[DEBUG] Hover style after applying:", c.Red(), c.Green(), c.Blue())
+
+        # أعِد عرض المحاور إذا كانت موجودة
+        if getattr(self, "_axis_x", None) and getattr(self, "_axis_y", None) and getattr(self, "_axis_z", None):
             ctx.Display(self._axis_x, True)
             ctx.Display(self._axis_y, True)
             ctx.Display(self._axis_z, True)
 
         self.display.FitAll()
+        ctx.UpdateCurrentViewer()
+
+    def _debug_hover_state(self):
+        """يطبع حالة الـ Context للتأكد من تفعيل الهوفر ورؤية ألوان الستايل."""
+        try:
+            ctx = self.display.Context
+        except Exception:
+            print("[DEBUG] display.Context غير جاهز")
+            return
+
+        print("=== [DEBUG] Hover State ===")
+        # هل الهوفر التلقائي مفعّل؟
+        try:
+            print("AutomaticHighlight:", ctx.AutomaticHighlight())
+        except Exception:
+            print("AutomaticHighlight: (غير مدعوم في الإصدار الحالي)")
+
+        # هل هناك جسم تحت المؤشر أو جسم مُختار؟
+        try:
+            print("HasCurrent:", ctx.HasCurrent())
+            print("HasSelected:", ctx.HasSelected())
+        except Exception as e:
+            print("HasCurrent/HasSelected check failed:", e)
+
+        # اطبع لون ستايل الهوفر الحالي
+        try:
+            hs = ctx.HighlightStyle()  # Prs3d_Drawer
+            col = hs.Color()
+            print("Hover color:", col.Red(), col.Green(), col.Blue())
+        except Exception:
+            # بعض الإصدارات القديمة
+            try:
+                c = ctx.HighlightColor()
+                print("Hover color:", c.Red(), c.Green(), c.Blue())
+            except Exception:
+                print("Hover color: (غير متاح للقراءة)")
+
+        # اطبع لون ستايل التحديد
+        try:
+            ss = ctx.SelectionStyle()
+            col = ss.Color()
+            print("Selection color:", col.Red(), col.Green(), col.Blue())
+        except Exception:
+            print("Selection color: (غير متاح للقراءة)")
+        print("===========================")
+
+    def eventFilter(self, obj, event):
+        """تتبّع حركة الماوس فوق نافذة العرض لمعرفة إن كان يلتقط AIS أم لا."""
+        from PyQt5.QtCore import QEvent
+        if obj is self.viewer_widget and event.type() == QEvent.MouseMove:
+            try:
+                ctx = self.display.Context
+                if ctx.HasCurrent():
+                    # يوجد كائن تحت المؤشر
+                    try:
+                        ais = ctx.Current()  # قد يرمي استثناء، لذا نحوطه
+                        print("[DEBUG] Hovering AIS object:", ais)
+                    except Exception:
+                        print("[DEBUG] Hovering: has current (AIS موجود)")
+                else:
+                    print("[DEBUG] Hovering over empty space")
+            except Exception:
+                pass
+        return super().eventFilter(obj, event)
+
+    def apply_hover_and_selection_style(self):
+        """تهيئة لون الهوفر والتحديد (متوافقة مع OCCT 7.9)."""
+        print("[🎨] Applying hover & selection styles (OCCT 7.9)...")
+
+        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+        from OCC.Core.Prs3d import Prs3d_Drawer
+
+        ctx = self.display.Context
+
+        # ⚪ لون الهوفر: رمادي فاتح
+        hover_color = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
+        hover_style = Prs3d_Drawer()
+        hover_style.SetColor(hover_color)
+        hover_style.SetDisplayMode(1)
+        hover_style.SetTransparency(0.0)
+        ctx.SetHighlightStyle(hover_style)
+
+        # 🟠 لون التحديد: برتقالي
+        select_color = Quantity_Color(1.0, 0.6, 0.0, Quantity_TOC_RGB)
+        select_style = Prs3d_Drawer()
+        select_style.SetColor(select_color)
+        select_style.SetDisplayMode(1)
+        select_style.SetTransparency(0.0)
+        ctx.SetSelectionStyle(select_style)
+
+        try:
+            ctx.SetAutomaticHighlight(True)
+        except Exception:
+            pass
+        c = self.display.Context.HighlightStyle().Color()
+        print("[DEBUG] New hover color:", c.Red(), c.Green(), c.Blue())
+
+        print("[✅] Hover & selection styles applied for OCCT 7.9")
 
     def draw_axes(self):
         from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1

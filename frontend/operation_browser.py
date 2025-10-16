@@ -1,104 +1,69 @@
-# frontend/operation_browser.py
-from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem
-from PyQt5.QtCore import pyqtSignal
+from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem, QMenu, QAction
+from PyQt5.QtCore import pyqtSignal, Qt
 
 class OperationBrowser(QTreeWidget):
-    """
-    شجرة العمليات (Profiles → Extrudes → Drills ...)
-    مسؤولة عن عرض كل ما يحدث في العارض بشكل هرمي، مشابه للـ Browser في Fusion.
-    """
-    item_selected = pyqtSignal(str, str)  # category, name
+    item_selected = pyqtSignal(str, str)
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setHeaderHidden(True)
-        self.setStyleSheet("""
-            QTreeWidget {
-                background: rgb(245, 245, 245);
-                border: none;
-            }
-            QTreeWidget::item {
-                background: transparent;
-                padding: 4px 6px;
-            }
-            QTreeWidget::item:hover {
-                background: rgb(235, 235, 235);
-            }
-            QTreeWidget::item:selected {
-                background: rgb(0, 120, 215);
-                color: white;
-            }
-        """)
-
-        # جذر Profiles
-        self.profiles_root = QTreeWidgetItem(["Profiles"])
-        self.addTopLevelItem(self.profiles_root)
-        self.profiles_root.setExpanded(True)
-
-        # profile_name → profile_item
-        self.profile_nodes = {}
-
+    def __init__(self):
+        super().__init__()
+        self.setHeaderLabels(["Operation", "Details"])
+        self.setColumnCount(2)
+        self.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
         self.itemClicked.connect(self._on_item_clicked)
 
-    # ---------- عمليات أساسية ----------
-    def add_profile(self, profile_name: str):
-        """إضافة بروفايل جديد"""
-        if profile_name in self.profile_nodes:
-            return self.profile_nodes[profile_name]
-        p_item = QTreeWidgetItem([profile_name])
-        self.profiles_root.addChild(p_item)
-        self.profiles_root.setExpanded(True)
-        self.profile_nodes[profile_name] = p_item
-        return p_item
+        self.profile_root = QTreeWidgetItem(["Profiles"])
+        self.extrude_root = QTreeWidgetItem(["Extrudes"])
+        self.hole_root = QTreeWidgetItem(["Holes"])
 
-    def add_extrude(self, profile_name: str, distance: float):
-        """إضافة عملية Extrude تحت بروفايل"""
-        if profile_name not in self.profile_nodes:
-            p_item = self.add_profile(profile_name)
-        else:
-            p_item = self.profile_nodes[profile_name]
+        self.addTopLevelItem(self.profile_root)
+        self.addTopLevelItem(self.extrude_root)
+        self.addTopLevelItem(self.hole_root)
 
-        extrude_item = QTreeWidgetItem([f"Extrude {distance} mm"])
-        p_item.addChild(extrude_item)
-        p_item.setExpanded(True)
-        return extrude_item
+    def add_profile(self, name):
+        item = QTreeWidgetItem([name, "DXF"])
+        self.profile_root.addChild(item)
+        return item
 
-    def add_sub_operation(self, extrude_item: QTreeWidgetItem, op_name: str):
-        """إضافة عملية فرعية (Drill / Cut ...) تحت extrude"""
-        sub_item = QTreeWidgetItem([op_name])
-        extrude_item.addChild(sub_item)
-        extrude_item.setExpanded(True)
-        return sub_item
+    def add_extrude(self, profile_name, distance):
+        label = f"{profile_name} → {distance}mm"
+        item = QTreeWidgetItem([label, "Extrude"])
+        self.extrude_root.addChild(item)
+        return item
 
-    # ---------- التحديد ----------
+    def add_hole(self, position, diameter, axis):
+        x, y, z = position
+        label = f"Hole @ ({x},{y},{z}) Ø{diameter} Axis:{axis}"
+        item = QTreeWidgetItem([label, "Hole"])
+        self.hole_root.addChild(item)
+        return item
+
     def _on_item_clicked(self, item, column):
+        category = item.parent().text(0) if item.parent() else "Root"
+        name = item.text(0)
+        self.item_selected.emit(category, name)
+
+    def currentItem(self):
+        return self.selectedItems()[0] if self.selectedItems() else None
+
+    def _show_context_menu(self, position):
+        item = self.itemAt(position)
+        if item and item.parent():
+            menu = QMenu()
+            delete_action = QAction("Delete", self)
+            rename_action = QAction("Rename", self)
+
+            delete_action.triggered.connect(lambda: self._delete_item(item))
+            rename_action.triggered.connect(lambda: self._rename_item(item))
+
+            menu.addAction(delete_action)
+            menu.addAction(rename_action)
+            menu.exec_(self.viewport().mapToGlobal(position))
+
+    def _delete_item(self, item):
         parent = item.parent()
-        if parent is None:
-            category = "root"
-        elif parent == self.profiles_root:
-            category = "profile"
-        elif parent.text(0).startswith("Extrude"):
-            category = "sub_op"
-        elif item.text(0).startswith("Extrude"):
-            category = "extrude"
-        else:
-            category = "unknown"
-        self.item_selected.emit(category, item.text(0))
+        if parent:
+            parent.removeChild(item)
 
-from PyQt5.QtWidgets import QMenu, QInputDialog
-
-def contextMenuEvent(self, event):
-    item = self.itemAt(event.pos())
-    if item and item != self.profiles_root:
-        menu = QMenu(self)
-        rename_action = menu.addAction("Rename")
-        delete_action = menu.addAction("Delete")
-        action = menu.exec_(self.mapToGlobal(event.pos()))
-        if action == rename_action:
-            new_name, ok = QInputDialog.getText(self, "Rename", "New name:", text=item.text(0))
-            if ok and new_name:
-                item.setText(0, new_name)
-        elif action == delete_action:
-            parent = item.parent()
-            if parent:
-                parent.removeChild(item)
+    def _rename_item(self, item):
+        self.editItem(item, 0)

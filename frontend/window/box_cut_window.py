@@ -1,33 +1,28 @@
-# frontend/window/box_cut_window.py
+# frontend/window/box_cut_window.py — SAFE BUILD
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QFormLayout, QLineEdit, QHBoxLayout, QPushButton, QComboBox
 from PyQt5.QtCore import Qt
 
-from tools.geometry_ops import add_box_cut, preview_box_cut
-from tools.color_utils import display_with_fusion_style, display_preview_shape
+from OCC.Core.AIS import AIS_Shape
+from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
-from tools.dimension_manager import DimensionManager
+from tools.geometry_ops import add_box_cut, preview_box_cut
+from tools.color_utils import display_with_fusion_style
 from tools.dimensions import (
     measure_shape,
-    hole_reference_dimensions,   # نستخدمه لرسم قياسات X/Y المرجعية
-    hole_size_dimensions,        # نستخدمه لرسم W/H/D للصندوق أيضاً
-    get_zmax
+    box_cut_reference_dimensions,
+    box_cut_size_dimensions
 )
-from tools.dimension_draw import draw_dimension, DIM_COLOR_PREVIEW, DIM_COLOR_HOLE
-from OCC.Core.gp import gp_Pnt
+
+ENABLE_PREVIEW_DIMS = False  # فعّله لاحقًا إن رغبت بقياسات المعاينة
 
 
 class BoxCutWindow(QWidget):
     def __init__(self, parent=None, display=None, shape_getter=None, shape_setter=None):
         super().__init__(parent)
-        self._main_ais = None  # مقبض الشكل الأساسي (اختياري إن أرجعته دالة العرض)
-        self._preview_ais = None
         self.display = display
         self.get_shape = shape_getter
         self.set_shape = shape_setter
-
-        # مدير القياسات
-        self.dim_mgr = DimensionManager(self.display)
-
+        self._box_preview_ais = None
         self._build_ui()
         self._connect_live_preview()
 
@@ -55,49 +50,27 @@ class BoxCutWindow(QWidget):
         layout.addLayout(form)
 
         preview_btn = QPushButton("👁 Preview Box Cut")
-        preview_btn.clicked.connect(self.preview_clicked)
-
-        apply_btn = QPushButton("✂️ Apply Box Cut")
+        apply_btn   = QPushButton("✂️ Apply Box Cut")
+        preview_btn.clicked.connect(self._update_preview)
         apply_btn.clicked.connect(self.apply_cut)
 
-        btn_layout = QHBoxLayout()
-        btn_layout.setAlignment(Qt.AlignCenter)
-        btn_layout.addWidget(preview_btn)
-        btn_layout.addSpacing(10)
-        btn_layout.addWidget(apply_btn)
-        layout.addLayout(btn_layout)
+        btns = QHBoxLayout()
+        btns.addWidget(preview_btn)
+        btns.addWidget(apply_btn)
+        layout.addLayout(btns)
 
-    # 🧰 أدوات إدارة المعاينة الموحدة
-    def _clear_preview(self):
-        """يمسح جميع المعاينات السابقة (AIS + قياسات)"""
-        # 🧼 مسح كل الـ AIS الخاصة بالمعاينة
-        if hasattr(self, "_preview_ais_list"):
-            for ais in self._preview_ais_list:
-                try:
-                    self.display.Context.Erase(ais, False)
-                except Exception:
-                    pass
-            self._preview_ais_list.clear()
-        else:
-            self._preview_ais_list = []
+    def _connect_live_preview(self):
+        for w in [self.x_input, self.y_input, self.z_input, self.width_input, self.height_input, self.depth_input]:
+            w.textChanged.connect(self._update_preview)
+        self.axis_combo.currentIndexChanged.connect(self._update_preview)
 
-        # 🧼 مسح مجموعة قياسات المعاينة فقط
-        if hasattr(self, "dim_mgr"):
-            self.dim_mgr.clear_group("preview", update=False)
-
-        self.display.Context.UpdateCurrentViewer()
-
-    def _add_preview_shape(self, shape):
-        """يعرض شكل معاينة جديد ويخزنه في القائمة لإزالته لاحقًا"""
-        if not hasattr(self, "_preview_ais_list"):
-            self._preview_ais_list = []
-
-        try:
-            ais = display_preview_shape(shape, self.display)
-            if ais is not None:
-                self._preview_ais_list.append(ais)
-        except Exception:
-            display_preview_shape(shape, self.display)
+    def _clear_box_preview(self):
+        if self._box_preview_ais is not None:
+            try:
+                self.display.Context.Erase(self._box_preview_ais, False)
+            except Exception:
+                pass
+            self._box_preview_ais = None
 
     def _get_values(self):
         try:
@@ -110,18 +83,8 @@ class BoxCutWindow(QWidget):
             axis = self.axis_combo.currentText()
             return x, y, z, w, h, d, axis
         except ValueError:
-            print("⚠️ قيم غير صالحة للـ Box Cut")
             return None
 
-    def _connect_live_preview(self):
-        for field in [
-            self.x_input, self.y_input, self.z_input,
-            self.width_input, self.height_input, self.depth_input
-        ]:
-            field.textChanged.connect(self._update_preview)
-        self.axis_combo.currentIndexChanged.connect(self._update_preview)
-
-    # ===================== PREVIEW =====================
     def _update_preview(self):
         vals = self._get_values()
         if not vals:
@@ -129,94 +92,58 @@ class BoxCutWindow(QWidget):
         x, y, z, w, h, d, axis = vals
 
         base_shape = self.get_shape()
-        if not base_shape:
+        if not base_shape or base_shape.IsNull():
             return
 
-        # 🧼 مسح المعاينة القديمة
-        self._clear_preview()
+        self._clear_box_preview()
 
-        # 🌀 إنشاء المعاينة الجديدة
         box_shape = preview_box_cut(x, y, z, w, h, d, axis)
-        self._add_preview_shape(box_shape)
+        if not box_shape or box_shape.IsNull():
+            print("[⚠] Box cut preview shape is null — skip")
+            return
 
-        # 📏 قياسات المعاينة
-        hole_reference_dimensions(self.display, base_shape, x, y, z,
-                                  offset_above=10, manager=self.dim_mgr, preview=True)
-        self._draw_box_dimensions(x, y, z, w, h, d, axis, preview=True)
+        ais = AIS_Shape(box_shape)
+        ais.SetColor(Quantity_Color(0.0, 0.45, 1.0, Quantity_TOC_RGB))
+        try: ais.SetTransparency(0.5)
+        except Exception: pass
+        self.display.Context.Display(ais, False)
+        self._box_preview_ais = ais
+
+        if ENABLE_PREVIEW_DIMS:
+            try:
+                box_cut_reference_dimensions(self.display, x, y, z, offset_above=10, preview=True)
+                box_cut_size_dimensions(self.display, w, h, d, x, y, z, offset_above=10, preview=True)
+            except Exception:
+                pass
 
         self.display.Context.UpdateCurrentViewer()
 
-    def preview_clicked(self):
-        self._update_preview()
-
-    # ===================== APPLY =====================
     def apply_cut(self):
         vals = self._get_values()
         if not vals:
             return
         x, y, z, w, h, d, axis = vals
 
-        base_shape = self.get_shape()
-        if not base_shape:
+        shape = self.get_shape()
+        if not shape or shape.IsNull():
             print("⚠️ لا يوجد شكل للقص")
             return
 
-        try:
-            result = add_box_cut(base_shape, x, y, z, w, h, d, axis)
-            if not result:
-                return
+        self._clear_box_preview()
 
-            self.set_shape(result)
+        result = add_box_cut(shape, x, y, z, w, h, d, axis)
+        if not result or result.IsNull():
+            print("⚠️ Box cut result is null")
+            return
 
-            # امسح فقط المعاينة
-            if self._preview_ais is not None:
-                self.display.Context.Erase(self._preview_ais, False)
-                self._preview_ais = None
-            self.dim_mgr.clear_group("preview", update=False)
+        self.set_shape(result)
+        display_with_fusion_style(result, self.display)
 
-            # أعرض الشكل النهائي
-            ret = display_with_fusion_style(result, self.display)
-            if ret is not None:
-                self._main_ais = ret
+        # قياسات نهائية فقط (آمنة)
+        measure_shape(self.display, result)
+        box_cut_reference_dimensions(self.display, x, y, z, offset_above=10, preview=False)
+        box_cut_size_dimensions(self.display, w, h, d, x, y, z, offset_above=10, preview=False)
 
-            # قياسات عامة
-            self.dim_mgr.clear_group("general", update=False)
-            measure_shape(self.display, result, offset_above=10, manager=self.dim_mgr)
-
-            # قياسات نهائية للصندوق (نفس مجموعة holes للتمييز لونيًا)
-            self.dim_mgr.clear_group("holes", update=False)
-            hole_reference_dimensions(self.display, result, x, y, z,
-                                      offset_above=10, manager=self.dim_mgr, preview=False)
-            self._draw_box_dimensions(x, y, z, w, h, d, axis, preview=False)
-
-            self.display.Context.UpdateCurrentViewer()
-            self.display.FitAll()
-            print(f"✂️ Box cut applied: ({x},{y},{z}) size=({w},{h},{d}) axis={axis}")
-        except Exception as e:
-            print(f"[❌] apply_box_cut error: {e}")
-            # داخل apply_hole / apply_cut / apply_extrude
-            self._clear_preview()
-
-    # ===================== قياسات أبعاد الصندوق =====================
-    def _draw_box_dimensions(self, x, y, z, w, h, d, axis, preview: bool):
-        """
-        رسم أبعاد Width / Height / Depth للصندوق على أعلى مستوى من الشكل.
-        """
-        color = DIM_COLOR_PREVIEW if preview else DIM_COLOR_HOLE
-        shape = self.get_shape()
-        base_z = get_zmax(shape) + 10 if shape else z + 10
-
-        # نقاط على مستوى علوي
-        corner = gp_Pnt(x, y, base_z)
-        x_end = gp_Pnt(x + w, y, base_z)
-        y_end = gp_Pnt(x, y + h, base_z)
-        z_start = gp_Pnt(x, y, base_z)
-        z_end = gp_Pnt(x, y, base_z - d)  # العمق للأسفل
-
-        objs = []
-        objs += list(draw_dimension(self.display, corner, x_end, f"W: {w:.1f} mm", color=color))
-        objs += list(draw_dimension(self.display, corner, y_end, f"H: {h:.1f} mm", color=color))
-        objs += list(draw_dimension(self.display, z_start, z_end, f"D: {d:.1f} mm", color=color))
-
-        for o in objs:
-            self.dim_mgr.add(o, "preview" if preview else "holes")
+        self.display.Context.UpdateCurrentViewer()
+        self.display.FitAll()
+        print(f"✂️ Box cut applied on axis={axis} at ({x},{y},{z}) size=({w},{h},{d})")

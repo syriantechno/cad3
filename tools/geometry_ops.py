@@ -121,4 +121,21 @@ def preview_box_cut(x, y, z, width, height, depth, axis='Z'):
     moved_box = BRepBuilderAPI_Transform(box_shape, trsf, True).Shape()
     return moved_box
 
+from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
+from OCC.Core.gp import gp_Vec
+
+def preview_extrude(shape, axis='Y', distance=100):
+    """
+    إنشاء شكل معاينة للإكسترود دون تغيير الشكل الأصلي.
+    لا يُستخدم لنقل الشكل أو حفظه.
+    """
+    if axis == "Y":
+        vec = gp_Vec(0, distance, 0)
+    elif axis == "Z":
+        vec = gp_Vec(0, 0, distance)
+    else:
+        vec = gp_Vec(distance, 0, 0)
+
+    return BRepPrimAPI_MakePrism(shape, vec).Shape()
+
 

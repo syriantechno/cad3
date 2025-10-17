@@ -1,30 +1,17 @@
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QStackedWidget, QScrollArea, QPushButton,
                              QComboBox, QDoubleSpinBox, QSpinBox, QLineEdit, QLabel, QWidget, QFrame, QListWidget,
                              QSizePolicy, QMessageBox, QFileDialog, QGridLayout)
-from PyQt5.QtGui import QPixmap
+
 from PyQt5.QtCore import Qt, QPoint, QTimer
 from pathlib import Path
 import os, json, shutil
-
 from dxf_tools import load_dxf_file
 from tools.database import ProfileDB
 from frontend.style import TOOL_FLOATING_WINDOW_STYLE  # أو أي اسم للدالة اللي تستخدمها لتطبيق الستايل
 from frontend.window.box_cut_window import BoxCutWindow
-
-# بعد إنشاء dialog
-
-
-
-# قبل
-# extrude_page = create_extrude_page()
-
-# بعد
-from frontend.window.extrude_window import ExtrudeWindow
-from frontend.window.profile_window import ProfileWindow
-from frontend.window.profiles_manager_window import ProfilesManagerWindow
-from frontend.window.tools_manager_window import ToolsManagerWindow
 from frontend.window.profiles_manager_v2_window import create_profile_manager_page_v2
 from frontend.window.hole_window import HoleWindow
+
 
 
 
@@ -112,6 +99,15 @@ def create_tool_window(parent):
     dialog.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
     dialog.setMinimumWidth(380)
     dialog.setMaximumWidth(500)
+
+    dialog = QDialog(parent)
+    dialog.setWindowTitle("Tool Window")
+    dialog.setWindowFlags(dialog.windowFlags() | Qt.Tool)
+
+    layout = QVBoxLayout(dialog)
+    stack = QStackedWidget(dialog)
+    layout.addWidget(stack)
+
     # 🟡 تأكد من وجود edit context
     dialog._edit_ctx = {
         "active": False,
@@ -167,6 +163,7 @@ def create_tool_window(parent):
         shape_setter=lambda s: setattr(parent, "loaded_shape", s)
     )
 
+
     # إضافة إلى الستاك
     stacked.addWidget(extrude_page)             # index 0
     stacked.addWidget(profile_page)             # index 1
@@ -175,6 +172,7 @@ def create_tool_window(parent):
     stacked.addWidget(profiles_manager_v2_page) # index 4 ✅
     stacked.addWidget(hole_page)                # index 5 🆕
     stacked.addWidget(box_cut_page)             # index 6 🆕
+
 
     # ✅ حفظ المراجع داخل الـ dialog
     dialog.extrude_page = extrude_page
@@ -185,9 +183,13 @@ def create_tool_window(parent):
     dialog.hole_page = hole_page
     dialog.box_cut_page = box_cut_page
 
+
+
     # أزرار أسفل
     bottom_layout = QHBoxLayout()
     bottom_layout.addStretch()
+    shape_btn = QPushButton("Shape Cut")
+    shape_btn.setObjectName("ShapeBtn")
     cancel_btn = QPushButton("Cancel")
     cancel_btn.setObjectName("CancelBtn")
     apply_btn = QPushButton("Apply")
@@ -280,7 +282,12 @@ def create_tool_window(parent):
             x, y, z, dia, axis = values
             print(f"[🟢 HOLE] X={x}, Y={y}, Z={z}, Dia={dia}, Axis={axis}")
             dialog.hole_page.hole_clicked()
-            # لاحقًا هنا نربط تنفيذ الحفر فعليًا
+
+        elif idx == 7:
+            # 🆕 تطبيق أداة مكتبة الأشكال
+            dialog.shape_page._on_ok_clicked()
+            dialog.hide()
+
             dialog.hide()
 
     apply_btn.clicked.connect(handle_apply)
@@ -296,6 +303,8 @@ def create_tool_window(parent):
             header.setText("Tools Manager")
         elif index == 5:
             header.setText("Hole")
+        elif index == 7:
+            header.setText("Shape")
         else:
             header.setText("Extrude")
         dialog.show()

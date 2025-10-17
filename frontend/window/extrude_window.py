@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QFormLayout, QHBoxLayout, QComboBox, QDoubleSpinBox, QPushButton
 from PyQt5.QtCore import Qt
 from OCC.Core.gp import gp_Pnt
-
+from tools.dimensions import measure_shape
 from tools.geometry_ops import extrude_shape
 from tools.color_utils import display_with_fusion_style
 
@@ -58,7 +58,10 @@ class ExtrudeWindow(QWidget):
 
             # تحديث الشكل في الواجهة
             self.set_shape(result_shape)
-
+            # 🟡 قياس تلقائي بعد الإكسترود
+            if result_shape is not None:
+                print("📏 Auto-dimension after extrude")
+                measure_shape(display, result_shape)
 
 
             # حفظ العملية في op_browser إن وجد

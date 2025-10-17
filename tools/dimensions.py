@@ -78,3 +78,40 @@ def draw_dimension(display, p1: gp_Pnt, p2: gp_Pnt, label: str = None, lift_z: f
 
     display.Context.Display(txt, True)
     return line, txt
+
+from OCC.Core.Bnd import Bnd_Box
+from OCC.Core.BRepBndLib import brepbndlib_Add
+from OCC.Core.gp import gp_Pnt
+
+def measure_shape(display, shape):
+    """
+    يحسب أبعاد Bounding Box للشكل ويرسم أبعاد الطول والعرض والارتفاع تلقائيًا.
+    """
+    if shape is None:
+        print("⚠️ لا يوجد شكل للقياس.")
+        return
+
+    box = Bnd_Box()
+    brepbndlib_Add(shape, box)
+    xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+
+    pmin = gp_Pnt(xmin, ymin, zmin)
+    pmax = gp_Pnt(xmax, ymax, zmax)
+
+    # 🟡 نقاط المساعدة لرسم 3 أبعاد (X, Y, Z)
+    p_x1 = gp_Pnt(xmin, ymin, zmin)
+    p_x2 = gp_Pnt(xmax, ymin, zmin)
+
+    p_y1 = gp_Pnt(xmin, ymin, zmin)
+    p_y2 = gp_Pnt(xmin, ymax, zmin)
+
+    p_z1 = gp_Pnt(xmin, ymin, zmin)
+    p_z2 = gp_Pnt(xmin, ymin, zmax)
+
+    print(f"📏 قياسات الشكل: X={xmax - xmin:.1f}, Y={ymax - ymin:.1f}, Z={zmax - zmin:.1f}")
+
+    # 🟠 استدعاء دالة الرسم التي أرسلتها أنت
+    draw_dimension(display, p_x1, p_x2, f"{xmax - xmin:.1f} mm", lift_z=20)
+    draw_dimension(display, p_y1, p_y2, f"{ymax - ymin:.1f} mm", lift_z=20)
+    draw_dimension(display, p_z1, p_z2, f"{zmax - zmin:.1f} mm", lift_z=20)
+

@@ -145,6 +145,7 @@ def create_profile_manager_page_v2(parent, profile_page_getter=None, stacked_get
             # 🖤 عرض الشكل باللون الأسود
             black = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
             display.DisplayShape(shape, color=black, update=True)
+            from tools.axis_helpers import create_axes_with_labels
 
             # ✅ حفظ الشكل في الواجهة الرئيسية
             main_window.loaded_shape = shape

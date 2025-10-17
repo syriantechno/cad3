@@ -19,6 +19,8 @@ from OCC.Core.gp import gp_Pnt
 class BoxCutWindow(QWidget):
     def __init__(self, parent=None, display=None, shape_getter=None, shape_setter=None):
         super().__init__(parent)
+        self._main_ais = None  # مقبض الشكل الأساسي (اختياري إن أرجعته دالة العرض)
+        self._preview_ais = None
         self.display = display
         self.get_shape = shape_getter
         self.set_shape = shape_setter
@@ -65,6 +67,38 @@ class BoxCutWindow(QWidget):
         btn_layout.addWidget(apply_btn)
         layout.addLayout(btn_layout)
 
+    # 🧰 أدوات إدارة المعاينة الموحدة
+    def _clear_preview(self):
+        """يمسح جميع المعاينات السابقة (AIS + قياسات)"""
+        # 🧼 مسح كل الـ AIS الخاصة بالمعاينة
+        if hasattr(self, "_preview_ais_list"):
+            for ais in self._preview_ais_list:
+                try:
+                    self.display.Context.Erase(ais, False)
+                except Exception:
+                    pass
+            self._preview_ais_list.clear()
+        else:
+            self._preview_ais_list = []
+
+        # 🧼 مسح مجموعة قياسات المعاينة فقط
+        if hasattr(self, "dim_mgr"):
+            self.dim_mgr.clear_group("preview", update=False)
+
+        self.display.Context.UpdateCurrentViewer()
+
+    def _add_preview_shape(self, shape):
+        """يعرض شكل معاينة جديد ويخزنه في القائمة لإزالته لاحقًا"""
+        if not hasattr(self, "_preview_ais_list"):
+            self._preview_ais_list = []
+
+        try:
+            ais = display_preview_shape(shape, self.display)
+            if ais is not None:
+                self._preview_ais_list.append(ais)
+        except Exception:
+            display_preview_shape(shape, self.display)
+
     def _get_values(self):
         try:
             x = float(self.x_input.text())
@@ -94,29 +128,20 @@ class BoxCutWindow(QWidget):
             return
         x, y, z, w, h, d, axis = vals
 
-        shape = self.get_shape()
-        if not shape:
+        base_shape = self.get_shape()
+        if not base_shape:
             return
 
-        # نظّف فقط القياسات السابقة للمعاينة
-        self.dim_mgr.clear_group("preview")
+        # 🧼 مسح المعاينة القديمة
+        self._clear_preview()
 
-        # معاينة الصندوق
+        # 🌀 إنشاء المعاينة الجديدة
         box_shape = preview_box_cut(x, y, z, w, h, d, axis)
+        self._add_preview_shape(box_shape)
 
-        # لا تمسح كل شيء
-        display_with_fusion_style(shape, self.display)
-        display_preview_shape(box_shape, self.display)
-
-        # قياسات مرجعية X/Y (من الأصل إلى موقع الصندوق)
-        hole_reference_dimensions(
-            self.display, shape, x, y, z,
-            offset_above=10,
-            manager=self.dim_mgr,
-            preview=True
-        )
-
-        # قياسات أبعاد الصندوق (W/H/D)
+        # 📏 قياسات المعاينة
+        hole_reference_dimensions(self.display, base_shape, x, y, z,
+                                  offset_above=10, manager=self.dim_mgr, preview=True)
         self._draw_box_dimensions(x, y, z, w, h, d, axis, preview=True)
 
         self.display.Context.UpdateCurrentViewer()
@@ -131,41 +156,46 @@ class BoxCutWindow(QWidget):
             return
         x, y, z, w, h, d, axis = vals
 
-        shape = self.get_shape()
-        if not shape:
+        base_shape = self.get_shape()
+        if not base_shape:
             print("⚠️ لا يوجد شكل للقص")
             return
 
         try:
-            result = add_box_cut(shape, x, y, z, w, h, d, axis)
-            if result:
-                self.set_shape(result)
+            result = add_box_cut(base_shape, x, y, z, w, h, d, axis)
+            if not result:
+                return
 
-                # نظّف معاينة القياسات فقط
-                self.dim_mgr.clear_group("preview")
+            self.set_shape(result)
 
-                # عرض الشكل
-                display_with_fusion_style(result, self.display)
+            # امسح فقط المعاينة
+            if self._preview_ais is not None:
+                self.display.Context.Erase(self._preview_ais, False)
+                self._preview_ais = None
+            self.dim_mgr.clear_group("preview", update=False)
 
-                # قياسات عامة جديدة بعد القص
-                self.dim_mgr.clear_group("general")
-                measure_shape(self.display, result, offset_above=10, manager=self.dim_mgr)
+            # أعرض الشكل النهائي
+            ret = display_with_fusion_style(result, self.display)
+            if ret is not None:
+                self._main_ais = ret
 
-                # قياسات مرجعية وأبعاد الصندوق النهائية
-                self.dim_mgr.clear_group("holes")
-                hole_reference_dimensions(
-                    self.display, result, x, y, z,
-                    offset_above=10,
-                    manager=self.dim_mgr,
-                    preview=False
-                )
-                self._draw_box_dimensions(x, y, z, w, h, d, axis, preview=False)
+            # قياسات عامة
+            self.dim_mgr.clear_group("general", update=False)
+            measure_shape(self.display, result, offset_above=10, manager=self.dim_mgr)
 
-                self.display.FitAll()
-                print(f"✂️ Box cut applied: ({x},{y},{z}) size=({w},{h},{d}) axis={axis}")
+            # قياسات نهائية للصندوق (نفس مجموعة holes للتمييز لونيًا)
+            self.dim_mgr.clear_group("holes", update=False)
+            hole_reference_dimensions(self.display, result, x, y, z,
+                                      offset_above=10, manager=self.dim_mgr, preview=False)
+            self._draw_box_dimensions(x, y, z, w, h, d, axis, preview=False)
 
+            self.display.Context.UpdateCurrentViewer()
+            self.display.FitAll()
+            print(f"✂️ Box cut applied: ({x},{y},{z}) size=({w},{h},{d}) axis={axis}")
         except Exception as e:
             print(f"[❌] apply_box_cut error: {e}")
+            # داخل apply_hole / apply_cut / apply_extrude
+            self._clear_preview()
 
     # ===================== قياسات أبعاد الصندوق =====================
     def _draw_box_dimensions(self, x, y, z, w, h, d, axis, preview: bool):

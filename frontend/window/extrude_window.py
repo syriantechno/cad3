@@ -9,6 +9,9 @@ from tools.dimensions import measure_shape
 class ExtrudeWindow(QWidget):
     def __init__(self, parent=None, display=None, shape_getter=None, shape_setter=None, op_browser=None):
         super().__init__(parent)
+        self._main_ais = None  # مقبض الشكل الأساسي (اختياري إن أرجعته دالة العرض)
+        self._preview_ais = None  # مقبض المعاينة الحالي فقط
+
         self.display = display
         self.get_shape = shape_getter
         self.set_shape = shape_setter
@@ -41,6 +44,7 @@ class ExtrudeWindow(QWidget):
         btn_layout.addWidget(apply_btn)
         layout.addLayout(btn_layout)
 
+
     def apply_extrude(self):
         shape = self.get_shape()
         if not shape:
@@ -59,10 +63,7 @@ class ExtrudeWindow(QWidget):
             # 🟢 تحديث الشكل في الواجهة
             self.set_shape(result_shape)
 
-            # 📏 قياسات تلقائية بعد الإكسترود
 
-            # 🧹 مسح جميع ما كان معروضاً (بما فيها القياسات القديمة)
-            self.display.EraseAll()
 
             # 🟡 عرض الشكل
             display_with_fusion_style(result_shape, self.display)

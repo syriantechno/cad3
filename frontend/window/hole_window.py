@@ -15,6 +15,8 @@ from tools.dimensions import (
 class HoleWindow(QWidget):
     def __init__(self, parent=None, display=None, shape_getter=None, shape_setter=None):
         super().__init__(parent)
+        self._main_ais = None  # مقبض الشكل الأساسي (اختياري إن أرجعته دالة العرض)
+        self._preview_ais = None
         self.display = display
         self.get_shape = shape_getter
         self.set_shape = shape_setter
@@ -60,6 +62,38 @@ class HoleWindow(QWidget):
         btns.addWidget(apply_btn)
         layout.addLayout(btns)
 
+    # 🧰 أدوات إدارة المعاينة الموحدة
+    def _clear_preview(self):
+        """يمسح جميع المعاينات السابقة (AIS + قياسات)"""
+        # 🧼 مسح كل الـ AIS الخاصة بالمعاينة
+        if hasattr(self, "_preview_ais_list"):
+            for ais in self._preview_ais_list:
+                try:
+                    self.display.Context.Erase(ais, False)
+                except Exception:
+                    pass
+            self._preview_ais_list.clear()
+        else:
+            self._preview_ais_list = []
+
+        # 🧼 مسح مجموعة قياسات المعاينة فقط
+        if hasattr(self, "dim_mgr"):
+            self.dim_mgr.clear_group("preview", update=False)
+
+        self.display.Context.UpdateCurrentViewer()
+
+    def _add_preview_shape(self, shape):
+        """يعرض شكل معاينة جديد ويخزنه في القائمة لإزالته لاحقًا"""
+        if not hasattr(self, "_preview_ais_list"):
+            self._preview_ais_list = []
+
+        try:
+            ais = display_preview_shape(shape, self.display)
+            if ais is not None:
+                self._preview_ais_list.append(ais)
+        except Exception:
+            display_preview_shape(shape, self.display)
+
     def _get_values(self):
         try:
             x = float(self.x_input.text())
@@ -80,35 +114,34 @@ class HoleWindow(QWidget):
         self.axis_combo.currentIndexChanged.connect(self._update_preview)
 
     # ========== PREVIEW ==========
+
+    def preview_clicked(self):
+        self._update_preview()
+
     def _update_preview(self):
         vals = self._get_values()
         if not vals:
             return
         x, y, z, dia, axis, depth = vals
 
-        shape = self.get_shape()
-        if not shape:
+        base_shape = self.get_shape()
+        if not base_shape:
             return
 
-        # مسح قياسات المعاينة فقط (تبقى العامة/النهائية)
-        self.dim_mgr.clear_group("preview", update=False)
+        # 🧼 مسح المعاينة السابقة
+        self._clear_preview()
 
+        # 🌀 إنشاء المعاينة الجديدة
         hole_shape = preview_hole(x, y, z, dia, axis)
+        self._add_preview_shape(hole_shape)
 
-        # لا نستخدم EraseAll — لا نريد حذف القياسات العامة
-        display_with_fusion_style(shape, self.display)
-        display_preview_shape(hole_shape, self.display)
-
-        # قياسات مرجعية + قطر/عمق (معاينة)
-        hole_reference_dimensions(self.display, shape, x, y, z, offset_above=10,
-                                  manager=self.dim_mgr, preview=True)
-        hole_size_dimensions(self.display, shape, x, y, z, dia, axis,
+        # 📏 قياسات المعاينة
+        hole_reference_dimensions(self.display, base_shape, x, y, z,
+                                  offset_above=10, manager=self.dim_mgr, preview=True)
+        hole_size_dimensions(self.display, base_shape, x, y, z, dia, axis,
                              depth=depth, offset_above=10, manager=self.dim_mgr, preview=True)
 
         self.display.Context.UpdateCurrentViewer()
-
-    def preview_clicked(self):
-        self._update_preview()
 
     # ========== APPLY ==========
     def apply_hole(self):
@@ -117,38 +150,46 @@ class HoleWindow(QWidget):
             return
         x, y, z, dia, axis, depth = vals
 
-        shape = self.get_shape()
-        if not shape:
+        base_shape = self.get_shape()
+        if not base_shape:
             print("⚠️ لا يوجد شكل للحفر")
             return
 
         try:
-            result = add_hole(shape, x, y, z, dia, axis, depth=depth) if "depth" in add_hole.__code__.co_varnames \
-                     else add_hole(shape, x, y, z, dia, axis)
+            result = add_hole(base_shape, x, y, z, dia, axis, depth=depth) if "depth" in add_hole.__code__.co_varnames \
+                else add_hole(base_shape, x, y, z, dia, axis)
+            if not result:
+                return
 
-            if result:
-                self.set_shape(result)
+            self.set_shape(result)
 
-                # نظّف فقط معاينة القياسات
-                self.dim_mgr.clear_group("preview")
-                # لا تمسح العامّة: سنعيد احتسابها الآن
+            # امسح فقط المعاينة
+            if self._preview_ais is not None:
+                self.display.Context.Erase(self._preview_ais, False)
+                self._preview_ais = None
+            self.dim_mgr.clear_group("preview", update=False)
 
-                # عرض الشكل
-                display_with_fusion_style(result, self.display)
+            # أعرض الشكل النهائي (ممكن ترجع AIS)
+            ret = display_with_fusion_style(result, self.display)
+            if ret is not None:
+                self._main_ais = ret
 
-                # قياسات عامة فوق الجسم
-                self.dim_mgr.clear_group("general")
-                measure_shape(self.display, result, offset_above=10, manager=self.dim_mgr)
+            # قياسات عامة جديدة
+            self.dim_mgr.clear_group("general", update=False)
+            measure_shape(self.display, result, offset_above=10, manager=self.dim_mgr)
 
-                # قياسات الحفرة النهائية
-                self.dim_mgr.clear_group("holes")
-                hole_reference_dimensions(self.display, result, x, y, z, offset_above=10,
-                                          manager=self.dim_mgr, preview=False)
-                hole_size_dimensions(self.display, result, x, y, z, dia, axis,
-                                     depth=depth, offset_above=10, manager=self.dim_mgr, preview=False)
+            # قياسات نهائية للحفرة
+            self.dim_mgr.clear_group("holes", update=False)
+            hole_reference_dimensions(self.display, result, x, y, z,
+                                      offset_above=10, manager=self.dim_mgr, preview=False)
+            hole_size_dimensions(self.display, result, x, y, z, dia, axis,
+                                 depth=depth, offset_above=10, manager=self.dim_mgr, preview=False)
 
-                self.display.FitAll()
-                print(f"🧱 Hole applied: axis={axis}, dia={dia}, depth={depth}, at ({x},{y},{z})")
-
+            self.display.Context.UpdateCurrentViewer()
+            self.display.FitAll()
+            print(f"🧱 Hole applied: axis={axis}, dia={dia}, depth={depth}, at ({x},{y},{z})")
         except Exception as e:
             print(f"[❌] apply_hole error: {e}")
+            # داخل apply_hole / apply_cut / apply_extrude
+            self._clear_preview()
+

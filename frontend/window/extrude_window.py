@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QFormLayout, QHBoxLayout, QComboBox, QDoubleSpinBox, QPushButton
 from PyQt5.QtCore import Qt
+from OCC.Core.gp import gp_Pnt
 
 from tools.geometry_ops import extrude_shape
 from tools.color_utils import display_with_fusion_style
@@ -18,7 +19,7 @@ class ExtrudeWindow(QWidget):
 
         form = QFormLayout()
         self.axis_combo = QComboBox()
-        self.axis_combo.addItems(["X", "Y", "Z"])
+        self.axis_combo.addItems(["Y"])
 
         self.distance_spin = QDoubleSpinBox()
         self.distance_spin.setRange(-100000, 100000)
@@ -30,7 +31,7 @@ class ExtrudeWindow(QWidget):
         layout.addLayout(form)
 
         # زر التنفيذ
-        apply_btn = QPushButton("🧱 Apply Extrude")
+        apply_btn = QPushButton("Apply Extrude")
         apply_btn.setObjectName("ApplyBtn")
         apply_btn.clicked.connect(self.apply_extrude)
 
@@ -51,11 +52,14 @@ class ExtrudeWindow(QWidget):
         try:
             result_shape = extrude_shape(shape, axis, distance)
 
+
             # عرض الشكل
             display_with_fusion_style(result_shape, self.display)
 
             # تحديث الشكل في الواجهة
             self.set_shape(result_shape)
+
+
 
             # حفظ العملية في op_browser إن وجد
             if self.op_browser:

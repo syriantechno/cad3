@@ -9,6 +9,7 @@ import os, json, shutil
 from dxf_tools import load_dxf_file
 from tools.database import ProfileDB
 from frontend.style import TOOL_FLOATING_WINDOW_STYLE  # أو أي اسم للدالة اللي تستخدمها لتطبيق الستايل
+from frontend.window.box_cut_window import BoxCutWindow
 
 # بعد إنشاء dialog
 
@@ -159,6 +160,12 @@ def create_tool_window(parent):
         shape_getter=lambda: parent.loaded_shape,
         shape_setter=lambda s: setattr(parent, "loaded_shape", s)
     )
+    box_cut_page = BoxCutWindow(
+        dialog,
+        display=parent.display,
+        shape_getter=lambda: parent.loaded_shape,
+        shape_setter=lambda s: setattr(parent, "loaded_shape", s)
+    )
 
     # إضافة إلى الستاك
     stacked.addWidget(extrude_page)             # index 0
@@ -167,6 +174,7 @@ def create_tool_window(parent):
     stacked.addWidget(tools_page)               # index 3 ✅
     stacked.addWidget(profiles_manager_v2_page) # index 4 ✅
     stacked.addWidget(hole_page)                # index 5 🆕
+    stacked.addWidget(box_cut_page)             # index 6 🆕
 
     # ✅ حفظ المراجع داخل الـ dialog
     dialog.extrude_page = extrude_page
@@ -175,6 +183,7 @@ def create_tool_window(parent):
     dialog.tools_page = tools_page
     dialog.profiles_manager_v2_page = profiles_manager_v2_page
     dialog.hole_page = hole_page
+    dialog.box_cut_page = box_cut_page
 
     # أزرار أسفل
     bottom_layout = QHBoxLayout()

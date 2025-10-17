@@ -11,6 +11,7 @@ from frontend.window.floating_window import load_dxf_file
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 from .utils_window import safe_exists  # استخدم safe_exists بدل _safe_exists
 
+
 def create_profile_manager_page_v2(parent, profile_page_getter=None, stacked_getter=None):
     """
     تصميم:
@@ -117,15 +118,85 @@ def create_profile_manager_page_v2(parent, profile_page_getter=None, stacked_get
             shape = load_dxf_file(Path(dxf))
             if shape is None:
                 raise RuntimeError("DXF returned no shape.")
+            from OCC.Core.Bnd import Bnd_Box
+            from OCC.Core.BRepBndLib import brepbndlib
+            from OCC.Core.gp import gp_Trsf, gp_Vec
+            from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 
+            # 🧭 حساب الصندوق المحيط للشكل
+            bbox = Bnd_Box()
+            brepbndlib.Add(shape, bbox)
+            xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+
+            # ✨ ترجمة الشكل بحيث تصبح الزاوية السفلية اليسرى عند (0,0,0)
+            trsf = gp_Trsf()
+            trsf.SetTranslation(gp_Vec(-xmin, -ymin, -zmin))
+            moved_shape = BRepBuilderAPI_Transform(shape, trsf, True).Shape()
+
+            shape = moved_shape  # ✅ استبدل الشكل الأصلي بالمنقول
+
+            # ✅ الحصول على العارض الرئيسي
             main_window = parent
             display = main_window.display
+
+            # 🧹 تنظيف العارض قبل العرض
             display.EraseAll()
+
+            # 🖤 عرض الشكل باللون الأسود
             black = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
             display.DisplayShape(shape, color=black, update=True)
+
+            # ✅ حفظ الشكل في الواجهة الرئيسية
             main_window.loaded_shape = shape
+
+            # ================= قياسات X + Z =================
+            from OCC.Core.Bnd import Bnd_Box
+            from OCC.Core.BRepBndLib import brepbndlib
+            from OCC.Core.gp import gp_Pnt
+            from tools.dimensions import draw_dimension
+            from math import isclose
+
+            bbox = Bnd_Box()
+            brepbndlib.Add(shape, bbox)
+            xmin, ymin, zmin, xmax, ymax, zmax = bbox.Get()
+
+            x_len = xmax - xmin
+            z_len = zmax - zmin
+
+            def compute_lift(p1: gp_Pnt, p2: gp_Pnt, top_z: float, extra: float = 20.0) -> float:
+                """حساب مقدار الرفع فوق الجسم لرسم البُعد بشكل واضح."""
+                current_top = max(p1.Z(), p2.Z())
+                return (top_z - current_top) + extra
+
+            # 🟥 قياس X (العرض)
+            if not isclose(x_len, 0.0, abs_tol=1e-9):
+                p1_x = gp_Pnt(xmin, ymin, zmax)
+                p2_x = gp_Pnt(xmax, ymin, zmax)
+                lift_x = compute_lift(p1_x, p2_x, zmax, extra=20.0)
+                draw_dimension(display, p1_x, p2_x, f"{x_len:.1f} mm", lift_z=lift_x)
+            else:
+                print("[WARN] X dimension skipped (zero length)")
+
+            # 🟩 قياس Z (الارتفاع)
+            if not isclose(z_len, 0.0, abs_tol=1e-9):
+                # ✨ إزاحة على X لإبعاد خط القياس عن الحافة
+                z_offset_x = (xmax - xmin) * 0.3  # 30% من عرض الشكل تقريباً (تقدر تعدلها)
+                p1_z = gp_Pnt(xmin - z_offset_x, ymin, zmin)
+                p2_z = gp_Pnt(xmin - z_offset_x, ymin, zmax)
+
+                lift_z = compute_lift(p1_z, p2_z, zmax, extra=20.0)
+                draw_dimension(display, p1_z, p2_z, f"{z_len:.1f} mm", lift_z=lift_z)
+            else:
+                print("[WARN] Z dimension skipped (zero length)")
+
+            print(f"[DEBUG] dims -> X: {x_len:.3f}  Z: {z_len:.3f}")
+
+            # ================= نهاية القياسات =================
+
+            # 🧭 ضبط الكاميرا
             display.FitAll()
 
+            # ✍️ إضافة البروفايل إلى شجرة العمليات
             if hasattr(main_window, "op_browser"):
                 profile_name = Path(dxf).stem
                 main_window.op_browser.add_profile(profile_name)

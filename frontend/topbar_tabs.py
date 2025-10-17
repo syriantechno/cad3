@@ -38,32 +38,7 @@ def create_topbar_tabs(parent):
 
         tabs.addTab(tab, tab_name)
 
-    def open_file():
-        path, _ = QFileDialog.getOpenFileName(parent, "Open Project", "", "Alucam Project (*.alucam)")
-        if path:
-            shape, meta = parent.load_project(path)
-            if shape:
-                parent.current_shape = shape
-                parent.display.DisplayShape(shape, update=True)
 
-    def save_file():
-        path, _ = QFileDialog.getSaveFileName(parent, "Save Project", "", "Alucam Project (*.alucam)")
-        if path:
-            metadata = {"name": "My Project"}
-            parent.save_project(parent.current_shape, path, metadata)
-
-    def import_file():
-        path, _ = QFileDialog.getOpenFileName(parent, "Import STEP", "", "STEP files (*.step *.stp)")
-        if path:
-            shape = parent.import_step(path)
-            if shape:
-                parent.current_shape = shape
-                parent.display.DisplayShape(shape, update=True)
-
-    def export_file():
-        path, _ = QFileDialog.getSaveFileName(parent, "Export STEP", "", "STEP files (*.step *.stp)")
-        if path:
-            parent.export_step(parent.current_shape, path)
 
     # ===== Home Tab =====
     home_tools = [
@@ -76,6 +51,15 @@ def create_topbar_tabs(parent):
     ]
     create_tab("Home", home_tools)
 
+    # ===== Profile Tab =====
+
+    profile_tools = [
+        ("frontend/icons/profile.png", "Profile", lambda: parent.open_add_profile_page(), False),
+        ("frontend/icons/profile.png", "Profile Manger", lambda: parent.show_tool_page(4), False)
+
+    ]
+    create_tab("Profile", profile_tools)
+
     # ===== Extrude Tab =====
     extrude_tools = [
         ("frontend/icons/extrude.png", "Extrude", lambda: parent.show_extrude_window(0), False)
@@ -85,7 +69,7 @@ def create_topbar_tabs(parent):
     # ===== Operation Tab =====
     operation_tools = [
         ("frontend/icons/cut.png", "Cut", lambda: print("Cut"), False),
-        ("frontend/icons/hole.png", "Hole", lambda: print("Hole"), False),
+        ("frontend/icons/hole.png", "Hole", lambda: parent.show_tool_page(5), False),
         ("frontend/icons/lock.png", "Lock", lambda: print("Lock"), False),
         ("frontend/icons/etc.png", "Etc", lambda: print("Etc"), False)
     ]
@@ -100,13 +84,7 @@ def create_topbar_tabs(parent):
 
     create_tab("Tools", tools_tools)
 
-    # ===== Profile Tab =====
 
-    profile_tools = [
-        ("frontend/icons/profile.png", "Profile", lambda: parent.open_add_profile_page(), False)
-
-    ]
-    create_tab("Profile", profile_tools)
 
     # ===== Help Tab =====
     help_tools = [

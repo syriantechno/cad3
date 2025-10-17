@@ -14,15 +14,14 @@ from PyQt5.QtWidgets import (
     QFileDialog, QHBoxLayout, QLabel, QComboBox,
     QDoubleSpinBox, QLineEdit, QToolBar, QAction
 )
+from frontend.orientation_cube import create_orientation_cube
 from PyQt5.QtCore import QTimer, Qt
-from frontend.utils.viewer_colors import setup_viewer_colors
+
 # Project tools (expected to exist in your repo)
 from dxf_tools import load_dxf_file
-from extrude_tools import extrude_shape, add_hole, preview_hole
+
 from frontend.topbar_tabs import create_topbar_tabs
-from frontend.window.floating_window import create_tool_window
-from frontend.tree import Tree
-from frontend.operation_browser import OperationBrowser
+
 from tools.tool_db import init_db, insert_tool, get_all_tools
 logging.basicConfig(level=logging.DEBUG)
 from frontend.window.floating_window import create_tool_window
@@ -74,6 +73,7 @@ class AlumCamGUI(QMainWindow):
         QTimer.singleShot(1500, self._debug_hover_state)
 
         self.draw_axes()
+        self._orientation_cube = create_orientation_cube(self.display)
 
         self.op_browser = OperationBrowser()
         self.op_browser.setStyleSheet("background-color: rgba(220, 220, 220, 180);")
@@ -83,73 +83,21 @@ class AlumCamGUI(QMainWindow):
         splitter.addWidget(self.op_browser)
         splitter.addWidget(self.viewer_widget)
 
-        # ===== Bottom controls =====
-        btn_layout = QHBoxLayout()
 
-        self.load_button = QPushButton("📂 Load DXF")
-        self.load_button.clicked.connect(self.load_dxf)
-        btn_layout.addWidget(self.load_button)
 
-        self.axis_combo = QComboBox()
-        self.axis_combo.addItems(["Y", "Z", "X"])
-        btn_layout.addWidget(QLabel("Extrude Axis:"))
-        btn_layout.addWidget(self.axis_combo)
 
-        self.distance_spin = QDoubleSpinBox()
-        self.distance_spin.setRange(1, 9999)
-        self.distance_spin.setValue(100)
-        self.distance_spin.setSuffix(" mm")
-        btn_layout.addWidget(QLabel("Distance (mm):"))
-        btn_layout.addWidget(self.distance_spin)
 
-        self.extrude_button = QPushButton("🧱 Extrude")
-        self.extrude_button.clicked.connect(self.show_extrude_window)
-        btn_layout.addWidget(self.extrude_button)
-
-        for lbl in ["X", "Y", "Z", "Dia"]:
-            btn_layout.addWidget(QLabel(f"Hole {lbl}:"))
-
-        self.hole_x = QLineEdit("0")
-        self.hole_y = QLineEdit("0")
-        self.hole_z = QLineEdit("0")
-        self.hole_dia = QLineEdit("6")
-
-        for w in [self.hole_x, self.hole_y, self.hole_z, self.hole_dia]:
-            btn_layout.addWidget(w)
-
-        self.axis_hole_combo = QComboBox()
-        self.axis_hole_combo.addItems(["X", "Y", "Z"])
-        btn_layout.addWidget(QLabel("Hole Axis:"))
-        btn_layout.addWidget(self.axis_hole_combo)
-
-        self.add_hole_btn = QPushButton("🕳 Add Hole")
-        self.add_hole_btn.clicked.connect(self.hole_clicked)
-        btn_layout.addWidget(self.add_hole_btn)
-
-        self.preview_hole_btn = QPushButton("👁 Preview Hole")
-        self.preview_hole_btn.clicked.connect(self.preview_clicked)
-        btn_layout.addWidget(self.preview_hole_btn)
-
-        profile_layout = QHBoxLayout()
-        self.profile_button = QPushButton("📐 Profile")
-        self.profile_button.clicked.connect(self.open_add_profile_page)   # ✅ فتح صفحة Profile
-        profile_layout.addWidget(self.profile_button)
-
-        self.manage_profiles_button = QPushButton("📂 Manage Profiles")
-        self.manage_profiles_button.clicked.connect(lambda: self.show_tool_page(4))  # ✅ صفحة إدارة البروفايلات
-        profile_layout.addWidget(self.manage_profiles_button)
 
         # ===== Final Layout =====
         main_widget = QWidget()
         main_layout = QVBoxLayout(main_widget)
         main_layout.addWidget(splitter)
-        main_layout.addLayout(btn_layout)
-        main_layout.addLayout(profile_layout)
+
         self.setCentralWidget(main_widget)
 
         self.delete_btn = QPushButton("🗑 Delete Operation")
         self.delete_btn.clicked.connect(self.delete_selected_operation)
-        btn_layout.addWidget(self.delete_btn)
+
 
         # ===== Background Setup =====
         def apply_background():
@@ -499,109 +447,6 @@ class AlumCamGUI(QMainWindow):
         except Exception as e:
             print(f"Display failed: {e}")
 
-    def extrude_clicked_from_window(self):
-        """Called from Apply button in extrude floating window."""
-        try:
-            if not self.loaded_shape:
-                print("⚠️ No shape loaded for extrusion.")
-                return
-
-            axis = self.axis_combo.currentText()
-            distance = self.distance_spin.value()
-            result_shape = extrude_shape(self.loaded_shape, axis, distance)
-
-            from OCC.Core.AIS import AIS_Shape
-            from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
-            from OCC.Core.TopExp import TopExp_Explorer
-            from OCC.Core.TopAbs import TopAbs_EDGE
-
-            # ✅ لون الجسم رمادي فاتح (قريب من Fusion)
-            body_color = Quantity_Color(0.545, 0.533, 0.498, Quantity_TOC_RGB)
-            ais_shape = AIS_Shape(result_shape)
-            ais_shape.SetColor(body_color)
-            ais_shape.SetDisplayMode(3)  # عرض الحواف تلقائيًا
-
-            self.display.EraseAll()
-
-            # ✅ عرض الجسم
-            self.display.Context.Display(ais_shape, False)
-            self.display.Context.Activate(ais_shape, 0, True)
-            self.display.Context.SetColor(ais_shape, body_color, False)
-
-
-            # ✅ عرض الحواف بلون أسود نقي
-            black = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
-            edge_explorer = TopExp_Explorer(result_shape, TopAbs_EDGE)
-            while edge_explorer.More():
-                edge = edge_explorer.Current()
-                edge_shape = AIS_Shape(edge)
-                self.display.Context.Display(edge_shape, False)
-                self.display.Context.SetColor(edge_shape, black, False)
-                self.display.Context.Activate(edge_shape, 0, True)
-                edge_explorer.Next()
-
-            self.loaded_shape = result_shape
-            extrude_item = self.op_browser.add_extrude("Extrude", distance)
-            extrude_item.shape = result_shape
-
-            # ✅ إعادة عرض المحاور
-            ctx = self.display.Context
-            for axis in [self._axis_x, self._axis_y, self._axis_z]:
-                if axis:
-                    ctx.Display(axis, True)
-
-            self.display.FitAll()
-
-            if self.tool_dialog.isVisible():
-                self.tool_dialog.hide()
-
-        except Exception as e:
-            print(f"extrude_clicked_from_window error: {e}")
-
-    def hole_clicked(self):
-        if not self.loaded_shape:
-            return
-        x = float(self.hole_x.text())
-        y = float(self.hole_y.text())
-        z = float(self.hole_z.text())
-        dia = float(self.hole_dia.text())
-        axis = self.axis_hole_combo.currentText()
-        self.loaded_shape = add_hole(self.loaded_shape, x, y, z, dia, axis)
-        self.display_shape_with_axes(self.loaded_shape)
-
-    def preview_clicked(self):
-        if not self.loaded_shape:
-            return
-
-        try:
-            x = float(self.hole_x.text())
-            y = float(self.hole_y.text())
-            z = float(self.hole_z.text())
-            dia = float(self.hole_dia.text())
-        except ValueError:
-            print("❌ قيم الحفر غير صالحة (يجب أن تكون أرقام)")
-            return
-
-        axis = self.axis_hole_combo.currentText()
-
-        self.display.EraseAll()
-
-        from OCC.Core.AIS import AIS_Shape
-        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
-
-
-
-        dark_gray = Quantity_Color(0.545, 0.533, 0.498, Quantity_TOC_RGB)
-        ais_loaded = AIS_Shape(self.loaded_shape)
-        ais_loaded.SetColor(dark_gray)
-        self.display.Context.Display(ais_loaded, True)
-
-        self.hole_preview = preview_hole(x, y, z, dia, axis)
-        if not self.hole_preview or self.hole_preview.IsNull():
-            print("❌ فشل في إنشاء معاينة الحفرة")
-            return
-
-        self.display.DisplayShape(self.hole_preview, color="RED", update=True)
 
     def open_add_profile_page(self):
         print("[DEBUG] تم الضغط على زر Profile")

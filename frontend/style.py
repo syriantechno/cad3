@@ -151,6 +151,10 @@ TOOL_FLOATING_WINDOW_STYLE = """
     QPushButton#ApplyBtn {
         background-color: #0078d4; color: white;
     }
+    
+    QPushButton#PreviewBtn {
+        background-color: #d9024d; color: white;
+    }
     QPushButton#ApplyBtn:hover { background-color: #005ea2; }
     QPushButton#CancelBtn {
         background-color: #e0e0e0; color: black;

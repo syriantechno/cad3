@@ -23,6 +23,8 @@ from frontend.window.profile_window import ProfileWindow
 from frontend.window.profiles_manager_window import ProfilesManagerWindow
 from frontend.window.tools_manager_window import ToolsManagerWindow
 from frontend.window.profiles_manager_v2_window import create_profile_manager_page_v2
+from frontend.window.hole_window import HoleWindow
+
 
 
 try:
@@ -100,6 +102,8 @@ from .profile_window import ProfileWindow
 from .profiles_manager_window import ProfilesManagerWindow
 from .tools_manager_window import ToolsManagerWindow
 
+
+
 def create_tool_window(parent):
     tool_types = _load_tool_types()
     dialog = DraggableDialog(parent)
@@ -137,11 +141,24 @@ def create_tool_window(parent):
     main_layout.addWidget(stacked)
 
     # إنشاء الصفحات
-    extrude_page = ExtrudeWindow(parent)
+    extrude_page = ExtrudeWindow(
+        dialog,
+        display=parent.display,
+        shape_getter=lambda: parent.loaded_shape,
+        shape_setter=lambda s: setattr(parent, "loaded_shape", s),
+        op_browser=getattr(parent, "op_browser", None)
+    )
+
     profile_page = ProfileWindow(dialog, load_dxf=load_dxf_file, qtViewer3d=qtViewer3d)
     profiles_manager_v2_page = create_profile_manager_page_v2(parent, profile_page_getter=lambda: profile_page, stacked_getter=lambda: stacked )
     profiles_manager_page = ProfilesManagerWindow(dialog, load_dxf=load_dxf_file, parent_main=parent)
     tools_page = ToolsManagerWindow(tool_types, open_add_type_dialog_cb=None)  # لاحقًا تضيف الكول باك
+    hole_page = HoleWindow(
+        dialog,
+        display=parent.display,
+        shape_getter=lambda: parent.loaded_shape,
+        shape_setter=lambda s: setattr(parent, "loaded_shape", s)
+    )
 
     # إضافة إلى الستاك
     stacked.addWidget(extrude_page)             # index 0
@@ -149,6 +166,7 @@ def create_tool_window(parent):
     stacked.addWidget(profiles_manager_page)    # index 2
     stacked.addWidget(tools_page)               # index 3 ✅
     stacked.addWidget(profiles_manager_v2_page) # index 4 ✅
+    stacked.addWidget(hole_page)                # index 5 🆕
 
     # ✅ حفظ المراجع داخل الـ dialog
     dialog.extrude_page = extrude_page
@@ -156,6 +174,7 @@ def create_tool_window(parent):
     dialog.profiles_manager_page = profiles_manager_page
     dialog.tools_page = tools_page
     dialog.profiles_manager_v2_page = profiles_manager_v2_page
+    dialog.hole_page = hole_page
 
     # أزرار أسفل
     bottom_layout = QHBoxLayout()
@@ -181,6 +200,7 @@ def create_tool_window(parent):
                 distance_val = getattr(parent, "last_extrude_distance", None)
                 if profile_name and distance_val and hasattr(parent, "op_browser"):
                     parent.op_browser.add_extrude(profile_name, distance_val)
+                dialog.extrude_page.apply_extrude()
                 dialog.hide()
             except Exception as e:
                 QMessageBox.critical(dialog, "Extrude Error", str(e))
@@ -242,6 +262,17 @@ def create_tool_window(parent):
         elif idx == 3:
             QMessageBox.information(dialog, "Tools", "Save Tool not implemented.")
             return
+        elif idx == 5:
+            # 🟡 Hole Page
+            values = hole_page.get_values()
+            if values is None:
+                QMessageBox.warning(dialog, "Hole", "الرجاء إدخال قيم صحيحة.")
+                return
+            x, y, z, dia, axis = values
+            print(f"[🟢 HOLE] X={x}, Y={y}, Z={z}, Dia={dia}, Axis={axis}")
+            dialog.hole_page.hole_clicked()
+            # لاحقًا هنا نربط تنفيذ الحفر فعليًا
+            dialog.hide()
 
     apply_btn.clicked.connect(handle_apply)
 
@@ -254,6 +285,8 @@ def create_tool_window(parent):
             header.setText("Profile")
         elif index == 3:
             header.setText("Tools Manager")
+        elif index == 5:
+            header.setText("Hole")
         else:
             header.setText("Extrude")
         dialog.show()

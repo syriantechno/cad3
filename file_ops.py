@@ -128,3 +128,25 @@ def export_stl(shape: TopoDS_Shape, file_path: str):
     else:
         print("❌ فشل في تصدير STL")
 
+
+def open_file(self):
+    dlg = QFileDialog(self, "Open Project")
+    dlg.setAcceptMode(QFileDialog.AcceptOpen)
+    dlg.setNameFilter("Alucam Project (*.alucam)")
+    dlg.setOption(QFileDialog.DontUseNativeDialog, True)
+
+    if dlg.exec_():
+        path = dlg.selectedFiles()[0]
+
+        def _do_load():
+            shape, metadata = load_project(path)
+            if shape:
+                self.loaded_shape = shape
+                self.display_shape_with_axes(shape)
+                print(f"📂 Metadata: {metadata}")
+            else:
+                print("❌ فشل في تحميل المشروع")
+
+        QTimer.singleShot(0, _do_load)
+
+

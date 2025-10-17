@@ -71,7 +71,7 @@ def create_topbar_tabs(parent):
         ("frontend/icons/cut.png", "Cut", lambda: parent.show_tool_page(6), False),
         ("frontend/icons/hole.png", "Hole", lambda: parent.show_tool_page(5), False),
         ("frontend/icons/lock.png", "Lock", lambda: print("Lock"), False),
-        ("frontend/icons/lock.png", "Shape", lambda:  print("Lock"), False)
+        ("frontend/icons/lock.png", "Shape", lambda:  parent.show_tool_page(7), False)
 
     ]
     create_tab("Operation", operation_tools)

@@ -11,6 +11,7 @@ from frontend.style import TOOL_FLOATING_WINDOW_STYLE  # أو أي اسم للد
 from frontend.window.box_cut_window import BoxCutWindow
 from frontend.window.profiles_manager_v2_window import create_profile_manager_page_v2
 from frontend.window.hole_window import HoleWindow
+from frontend.window.shape_manager_window import create_shape_manager_page
 
 
 
@@ -100,13 +101,7 @@ def create_tool_window(parent):
     dialog.setMinimumWidth(380)
     dialog.setMaximumWidth(500)
 
-    dialog = QDialog(parent)
-    dialog.setWindowTitle("Tool Window")
-    dialog.setWindowFlags(dialog.windowFlags() | Qt.Tool)
 
-    layout = QVBoxLayout(dialog)
-    stack = QStackedWidget(dialog)
-    layout.addWidget(stack)
 
     # 🟡 تأكد من وجود edit context
     dialog._edit_ctx = {
@@ -145,6 +140,7 @@ def create_tool_window(parent):
         shape_setter=lambda s: setattr(parent, "loaded_shape", s),
         op_browser=getattr(parent, "op_browser", None)
     )
+    print("[DEBUG] Floating window is building pages...")
 
     profile_page = ProfileWindow(dialog, load_dxf=load_dxf_file, qtViewer3d=qtViewer3d)
     profiles_manager_v2_page = create_profile_manager_page_v2(parent, profile_page_getter=lambda: profile_page, stacked_getter=lambda: stacked )
@@ -162,6 +158,10 @@ def create_tool_window(parent):
         shape_getter=lambda: parent.loaded_shape,
         shape_setter=lambda s: setattr(parent, "loaded_shape", s)
     )
+    print("[DEBUG] Shape Manager Page is being created")
+
+    shape_page = create_shape_manager_page(parent)
+
 
 
     # إضافة إلى الستاك
@@ -172,6 +172,7 @@ def create_tool_window(parent):
     stacked.addWidget(profiles_manager_v2_page) # index 4 ✅
     stacked.addWidget(hole_page)                # index 5 🆕
     stacked.addWidget(box_cut_page)             # index 6 🆕
+    stacked.addWidget(shape_page)               # index 7 🆕
 
 
     # ✅ حفظ المراجع داخل الـ dialog
@@ -182,6 +183,7 @@ def create_tool_window(parent):
     dialog.profiles_manager_v2_page = profiles_manager_v2_page
     dialog.hole_page = hole_page
     dialog.box_cut_page = box_cut_page
+    dialog.shape_page = shape_page
 
 
 

@@ -4,6 +4,7 @@ from OCC.Core.gp import gp_Pnt
 from tools.dimensions import measure_shape
 from tools.geometry_ops import extrude_shape
 from tools.color_utils import display_with_fusion_style
+from tools.dimensions import measure_shape
 
 class ExtrudeWindow(QWidget):
     def __init__(self, parent=None, display=None, shape_getter=None, shape_setter=None, op_browser=None):
@@ -52,19 +53,25 @@ class ExtrudeWindow(QWidget):
         try:
             result_shape = extrude_shape(shape, axis, distance)
 
-
-            # عرض الشكل
+            # 🟡 عرض الشكل الناتج
             display_with_fusion_style(result_shape, self.display)
 
-            # تحديث الشكل في الواجهة
+            # 🟢 تحديث الشكل في الواجهة
             self.set_shape(result_shape)
-            # 🟡 قياس تلقائي بعد الإكسترود
-            if result_shape is not None:
-                print("📏 Auto-dimension after extrude")
-                measure_shape(display, result_shape)
 
+            # 📏 قياسات تلقائية بعد الإكسترود
 
-            # حفظ العملية في op_browser إن وجد
+            # 🧹 مسح جميع ما كان معروضاً (بما فيها القياسات القديمة)
+            self.display.EraseAll()
+
+            # 🟡 عرض الشكل
+            display_with_fusion_style(result_shape, self.display)
+
+            # 📏 قياسات جديدة
+
+            measure_shape(self.display, result_shape)
+
+            # 💾 حفظ العملية في المتصفح إن وجد
             if self.op_browser:
                 extrude_item = self.op_browser.add_extrude("Extrude", distance)
                 extrude_item.shape = result_shape
@@ -74,3 +81,4 @@ class ExtrudeWindow(QWidget):
 
         except Exception as e:
             print(f"[❌] apply_extrude error: {e}")
+

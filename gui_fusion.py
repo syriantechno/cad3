@@ -223,32 +223,8 @@ class AlumCamGUI(QMainWindow):
     def display_shape(self, shape):
         self.display.EraseAll()
 
-        from OCC.Core.AIS import AIS_Shape
-        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
-
-        # جسم واحد مظلل + حواف (OCCT يتكفل بالحواف تلقائيًا)
-        ais_shape = AIS_Shape(shape)
-        ais_shape.SetDisplayMode(1)  # 0=wireframe, 1=shaded (مع حواف)
-
-        light_gray = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
-
-        ctx = self.display.Context
-        ctx.Display(ais_shape, True)
-        ctx.SetColor(ais_shape, light_gray, False)
-
-        # ✅ طبّق ستايل الهوفر/التحديد الآن (بعد أن صار هناك AIS في المشهد)
-        self.apply_hover_and_selection_style()
-        c = ctx.HighlightStyle().Color()
-        print("[DEBUG] Hover style after applying:", c.Red(), c.Green(), c.Blue())
-
-        # أعِد عرض المحاور إذا كانت موجودة
-        if getattr(self, "_axis_x", None) and getattr(self, "_axis_y", None) and getattr(self, "_axis_z", None):
-            ctx.Display(self._axis_x, True)
-            ctx.Display(self._axis_y, True)
-            ctx.Display(self._axis_z, True)
-
         self.display.FitAll()
-        ctx.UpdateCurrentViewer()
+
 
     def _debug_hover_state(self):
         """يطبع حالة الـ Context للتأكد من تفعيل الهوفر ورؤية ألوان الستايل."""

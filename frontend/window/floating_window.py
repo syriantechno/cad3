@@ -94,6 +94,8 @@ from .tools_manager_window import ToolsManagerWindow
 
 
 def create_tool_window(parent):
+    print("[DEBUG] Entering create_shape_manager_page")
+
     tool_types = _load_tool_types()
     dialog = DraggableDialog(parent)
     dialog.setObjectName("ToolFloatingWindow")
@@ -295,7 +297,14 @@ def create_tool_window(parent):
     apply_btn.clicked.connect(handle_apply)
 
     def show_page(index: int):
+        count = stacked.count()
+        print(f"[DEBUG] show_page called with index={index}, total={count}")
+        if index < 0 or index >= count:
+            print("[ERROR] Invalid stacked index:", index)
+            return
+
         stacked.setCurrentIndex(index)
+
         if index == 2:
             profiles_manager_page.refresh_profiles_list()
             header.setText("Profiles Manager")

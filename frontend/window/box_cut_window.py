@@ -1,11 +1,11 @@
-# frontend/window/box_cut_window.py — SAFE BUILD
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QFormLayout, QLineEdit, QHBoxLayout, QPushButton, QComboBox
+# frontend/window/box_cut_window.py — FINAL BUILD (Manual Box Cut)
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QFormLayout, QLineEdit, QPushButton, QHBoxLayout
 from PyQt5.QtCore import Qt
 
 from OCC.Core.AIS import AIS_Shape
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
-from tools.geometry_ops import add_box_cut, preview_box_cut
+from tools.geometry_ops import preview_box_cut, apply_box_cut
 from tools.color_utils import display_with_fusion_style
 from tools.dimensions import (
     measure_shape,
@@ -13,8 +13,7 @@ from tools.dimensions import (
     box_cut_size_dimensions
 )
 
-ENABLE_PREVIEW_DIMS = False  # فعّله لاحقًا إن رغبت بقياسات المعاينة
-
+ENABLE_PREVIEW_DIMS = True
 
 class BoxCutWindow(QWidget):
     def __init__(self, parent=None, display=None, shape_getter=None, shape_setter=None):
@@ -22,6 +21,7 @@ class BoxCutWindow(QWidget):
         self.display = display
         self.get_shape = shape_getter
         self.set_shape = shape_setter
+
         self._box_preview_ais = None
         self._build_ui()
         self._connect_live_preview()
@@ -33,38 +33,36 @@ class BoxCutWindow(QWidget):
         self.x_input = QLineEdit("0")
         self.y_input = QLineEdit("0")
         self.z_input = QLineEdit("0")
-        self.width_input = QLineEdit("20")
-        self.height_input = QLineEdit("20")
-        self.depth_input = QLineEdit("20")
-
-        self.axis_combo = QComboBox()
-        self.axis_combo.addItems(["X", "Y", "Z"])
+        self.dx_input = QLineEdit("20")
+        self.dy_input = QLineEdit("20")
+        self.dz_input = QLineEdit("20")
 
         form.addRow("X:", self.x_input)
         form.addRow("Y:", self.y_input)
         form.addRow("Z:", self.z_input)
-        form.addRow("Width:", self.width_input)
-        form.addRow("Height:", self.height_input)
-        form.addRow("Depth:", self.depth_input)
-        form.addRow("Axis:", self.axis_combo)
+        form.addRow("DX:", self.dx_input)
+        form.addRow("DY:", self.dy_input)
+        form.addRow("DZ:", self.dz_input)
+
         layout.addLayout(form)
 
+        btn_layout = QHBoxLayout()
         preview_btn = QPushButton("👁 Preview Box Cut")
-        apply_btn   = QPushButton("✂️ Apply Box Cut")
+        apply_btn = QPushButton("✂️ Apply Box Cut")
         preview_btn.clicked.connect(self._update_preview)
-        apply_btn.clicked.connect(self.apply_cut)
-
-        btns = QHBoxLayout()
-        btns.addWidget(preview_btn)
-        btns.addWidget(apply_btn)
-        layout.addLayout(btns)
+        apply_btn.clicked.connect(self.apply_box_cut)
+        btn_layout.addWidget(preview_btn)
+        btn_layout.addWidget(apply_btn)
+        layout.addLayout(btn_layout)
 
     def _connect_live_preview(self):
-        for w in [self.x_input, self.y_input, self.z_input, self.width_input, self.height_input, self.depth_input]:
+        for w in (
+            self.x_input, self.y_input, self.z_input,
+            self.dx_input, self.dy_input, self.dz_input
+        ):
             w.textChanged.connect(self._update_preview)
-        self.axis_combo.currentIndexChanged.connect(self._update_preview)
 
-    def _clear_box_preview(self):
+    def _clear_preview(self):
         if self._box_preview_ais is not None:
             try:
                 self.display.Context.Erase(self._box_preview_ais, False)
@@ -77,73 +75,69 @@ class BoxCutWindow(QWidget):
             x = float(self.x_input.text())
             y = float(self.y_input.text())
             z = float(self.z_input.text())
-            w = float(self.width_input.text())
-            h = float(self.height_input.text())
-            d = float(self.depth_input.text())
-            axis = self.axis_combo.currentText()
-            return x, y, z, w, h, d, axis
+            dx = float(self.dx_input.text())
+            dy = float(self.dy_input.text())
+            dz = float(self.dz_input.text())
+            return x, y, z, dx, dy, dz
         except ValueError:
             return None
 
     def _update_preview(self):
         vals = self._get_values()
         if not vals:
+            self._clear_preview()
             return
-        x, y, z, w, h, d, axis = vals
+        x, y, z, dx, dy, dz = vals
 
         base_shape = self.get_shape()
         if not base_shape or base_shape.IsNull():
             return
 
-        self._clear_box_preview()
+        self._clear_preview()
 
-        box_shape = preview_box_cut(x, y, z, w, h, d, axis)
+        # 🟥 معاينة الصندوق الطارح
+        box_shape = preview_box_cut(x, y, z, dx, dy, dz)
         if not box_shape or box_shape.IsNull():
-            print("[⚠] Box cut preview shape is null — skip")
             return
 
         ais = AIS_Shape(box_shape)
-        ais.SetColor(Quantity_Color(0.0, 0.45, 1.0, Quantity_TOC_RGB))
-        try: ais.SetTransparency(0.5)
-        except Exception: pass
+        ais.SetColor(Quantity_Color(1, 0, 0, Quantity_TOC_RGB))  # أحمر
+        ais.SetTransparency(0.5)
         self.display.Context.Display(ais, False)
         self._box_preview_ais = ais
 
         if ENABLE_PREVIEW_DIMS:
-            try:
-                box_cut_reference_dimensions(self.display, x, y, z, offset_above=10, preview=True)
-                box_cut_size_dimensions(self.display, w, h, d, x, y, z, offset_above=10, preview=True)
-            except Exception:
-                pass
+            box_cut_reference_dimensions(self.display, x, y, z, base_shape, offset_above=10, preview=True)
+            box_cut_size_dimensions(self.display, dx, dy, dz, x, y, z, base_shape, offset_above=10, preview=True)
 
         self.display.Context.UpdateCurrentViewer()
 
-    def apply_cut(self):
+    def apply_box_cut(self):
         vals = self._get_values()
         if not vals:
             return
-        x, y, z, w, h, d, axis = vals
+        x, y, z, dx, dy, dz = vals
 
-        shape = self.get_shape()
-        if not shape or shape.IsNull():
-            print("⚠️ لا يوجد شكل للقص")
+        base_shape = self.get_shape()
+        if not base_shape or base_shape.IsNull():
+            print("⚠️ No base shape to cut")
             return
 
-        self._clear_box_preview()
+        self._clear_preview()
 
-        result = add_box_cut(shape, x, y, z, w, h, d, axis)
+        result = apply_box_cut(base_shape, x, y, z, dx, dy, dz)
         if not result or result.IsNull():
-            print("⚠️ Box cut result is null")
+            print("[❌] Box cut failed")
             return
 
         self.set_shape(result)
         display_with_fusion_style(result, self.display)
 
-        # قياسات نهائية فقط (آمنة)
+        # قياسات بعد التطبيق
         measure_shape(self.display, result)
-        box_cut_reference_dimensions(self.display, x, y, z, offset_above=10, preview=False)
-        box_cut_size_dimensions(self.display, w, h, d, x, y, z, offset_above=10, preview=False)
+        box_cut_reference_dimensions(self.display, x, y, z, result, offset_above=10, preview=False)
+        box_cut_size_dimensions(self.display, dx, dy, dz, x, y, z, result, offset_above=10, preview=False)
 
         self.display.Context.UpdateCurrentViewer()
         self.display.FitAll()
-        print(f"✂️ Box cut applied on axis={axis} at ({x},{y},{z}) size=({w},{h},{d})")
+        print(f"✂️ Box cut applied at ({x}, {y}, {z}) with size ({dx}, {dy}, {dz})")

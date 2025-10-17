@@ -154,7 +154,7 @@ def create_profile_manager_page_v2(parent, profile_page_getter=None, stacked_get
             from OCC.Core.Bnd import Bnd_Box
             from OCC.Core.BRepBndLib import brepbndlib
             from OCC.Core.gp import gp_Pnt
-            from tools.dimensions import _draw_dimension as draw_dimension
+            from tools.dimensions import draw_dimension
 
             from math import isclose
 

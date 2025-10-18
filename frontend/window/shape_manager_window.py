@@ -6,7 +6,7 @@ from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
 from os.path import join
-from dxf_loader import load_dxf_file  # تأكد أن الملف موجود في الجذر
+from dxf_loader import (load_dxf_file, extract_closed_faces_from_edges)  # تأكد أن الملف موجود في الجذر
 
 def extrude_shape(shape_2d: TopoDS_Shape, depth: float, axis: str) -> TopoDS_Shape:
     shape_oriented = orient_shape_to_axis(shape_2d, axis)
@@ -94,14 +94,21 @@ def create_shape_manager_page(parent):
     page.test_shapes = {}
 
     # تحميل شكل DXF من المكتبة
+
     dxf_path = join("frontend", "window", "library", "shapes", "60X60 8N.dxf")
-    shape_from_dxf = load_dxf_file(dxf_path)
-    if shape_from_dxf and not shape_from_dxf.IsNull():
+    raw_shape = load_dxf_file(dxf_path)
+    face_shape = extract_closed_faces_from_edges(raw_shape)
+
+    if face_shape and not face_shape.IsNull():
+        page.test_shapes["60X60 8N"] = face_shape
         shape_list.addItem("60X60 8N")
-        page.test_shapes["60X60 8N"] = shape_from_dxf
-        print("📂 تم تحميل شكل DXF بنجاح")
+        print("✅ تم تحميل وتحويل الشكل إلى Face")
+    elif raw_shape and not raw_shape.IsNull():
+        page.test_shapes["60X60 8N"] = raw_shape
+        shape_list.addItem("60X60 8N")
+        print("⚠️ تم تحميل الشكل كـ Compound بدون تحويل إلى Face")
     else:
-        print("❌ فشل في تحميل شكل DXF")
+        print("❌ فشل في تحميل أو تحويل شكل DXF")
 
     def on_select(row):
         name = shape_list.item(row).text()

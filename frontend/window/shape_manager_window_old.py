@@ -5,17 +5,12 @@ from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_Transform
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Cut
 from OCC.Core.Bnd import Bnd_Box
-from OCC.Core.BRepBndLib import brepbndlib
-
+from OCC.Core.BRepBndLib import brepbndlib_Add
 from OCC.Core.AIS import AIS_Shape
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 from os.path import basename
 import json
 from dxf_loader import smart_load_dxf
-from frontend.window.shape_auto_preview import safe_auto_preview
-
-
-
 
 def extrude_shape(shape_2d: TopoDS_Shape, depth: float, axis: str) -> TopoDS_Shape:
     shape_oriented = orient_shape_to_axis(shape_2d, axis)
@@ -57,7 +52,7 @@ def rotate_shape(shape: TopoDS_Shape, axis: str, angle_deg: float) -> TopoDS_Sha
 
 def get_shape_center(shape: TopoDS_Shape) -> gp_Pnt:
     box = Bnd_Box()
-    brepbndlib.Add(shape, box)
+    brepbndlib_Add(shape, box)
     xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
     return gp_Pnt((xmin + xmax)/2, (ymin + ymax)/2, (zmin + zmax)/2)
 
@@ -69,7 +64,7 @@ def scale_shape(shape: TopoDS_Shape, factor: float) -> TopoDS_Shape:
 
 def get_shape_size(shape: TopoDS_Shape, axis: str) -> float:
     box = Bnd_Box()
-    brepbndlib.Add(shape, box)
+    brepbndlib_Add(shape, box)
     xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
     if axis.upper() == "X":
         return xmax - xmin
@@ -81,7 +76,7 @@ def get_shape_size(shape: TopoDS_Shape, axis: str) -> float:
 
 def get_z_min(shape: TopoDS_Shape) -> float:
     box = Bnd_Box()
-    brepbndlib.Add(shape, box)
+    brepbndlib_Add(shape, box)
     _, _, zmin, _, _, _ = box.Get()
     return zmin
 
@@ -114,37 +109,19 @@ def preview_extrude(page, display):
         scale_target = float(page.scale_input.text())
         scale_axis = page.scale_axis_selector.currentText()
 
-        # إزالة المعاينة القديمة
         if hasattr(page, "preview_actor") and page.preview_actor:
             display.Context.Remove(page.preview_actor, False)
 
-        # 🧭 توسيط الشكل 2D قبل الإكسترود
-        center = get_shape_center(page.shape_2d)
-        trsf = gp_Trsf()
-        trsf.SetTranslation(gp_Vec(-center.X(), -center.Y(), -center.Z()))
-        shape_centered = BRepBuilderAPI_Transform(page.shape_2d, trsf, True).Shape()
+        shape_3d = extrude_shape(page.shape_2d, depth, axis)
 
-        # 🧱 إنشاء الشكل ثلاثي الأبعاد
-        shape_3d = extrude_shape(shape_centered, depth, axis)
-
-        # 🧭 توسيط الشكل 3D النهائي بعد الإكسترود
-        center3d = get_shape_center(shape_3d)
-        trsf_center = gp_Trsf()
-        trsf_center.SetTranslation(gp_Vec(-center3d.X(), -center3d.Y(), -center3d.Z()))
-        shape_3d = BRepBuilderAPI_Transform(shape_3d, trsf_center, True).Shape()
-
-        print(
-            f"[Centering] تم توسيط الشكل حول الأصل: ΔX={center3d.X():.3f}, ΔY={center3d.Y():.3f}, ΔZ={center3d.Z():.3f}")
-
-        # ⚙️ التحويلات الإضافية
         current_size = get_shape_size(shape_3d, scale_axis)
         scale_factor = scale_target / current_size if current_size > 0 else 1.0
-        shape_3d = apply_transformations(shape_3d, scale_factor, axis, rotation_angle, x, y, z)
+
+        zmin = get_z_min(shape_3d)
+        shape_3d = apply_transformations(shape_3d, scale_factor, axis, rotation_angle, x, y, z - zmin)
 
         page.preview_shape = shape_3d
         page.preview_actor = show_shape(display, shape_3d)
-        page.cutter_shape = shape_3d
-
         print("✅ تم عرض الشكل بعد تطبيق كل التحويلات")
 
     except Exception as e:
@@ -211,51 +188,16 @@ def create_shape_manager_page(parent):
             print(f"📐 تم اختيار الشكل: {name}")
 
     def apply_cut():
-        """
-        تنفيذ عملية القص بين الشكل الأساسي (base) ومعاينة الإكسترود (cutter)
-        ثم عرض النتيجة بلون Fusion الافتراضي.
-        """
         try:
             cutter = page.preview_shape
             base = getattr(parent, "loaded_shape", None)
-
-            print("💥 بدء تنفيذ عملية القص...")
-
-            if not cutter or cutter.IsNull():
-                print("❌ لا يوجد شكل Cutter صالح للقص.")
-                return
-            if not base or base.IsNull():
-                print("❌ لا يوجد شكل Base صالح للقص.")
-                return
-
-            # تنفيذ عملية القص
-            result = BRepAlgoAPI_Cut(base, cutter).Shape()
-            parent.loaded_shape = result
-
-            # إزالة جميع الأجسام القديمة من العارض
-            parent.display.Context.RemoveAll(True)
-
-            # إنشاء كائن العرض الجديد
-            from OCC.Core.AIS import AIS_Shape
-            from OCC.Core.Quantity import Quantity_TOC_RGB
-            ais_shape = AIS_Shape(result)
-
-            # 🎨 تطبيق اللون الموحد الخاص بالـ Fusion
-            try:
-                from tools.color_utils import FUSION_BODY_COLOR, BLACK
-                ais_shape.SetColor(FUSION_BODY_COLOR)
-            except Exception:
-                # لو ما توفر ملف الألوان
-                ais_shape.SetColor(Quantity_Color(0.545, 0.533, 0.498, Quantity_TOC_RGB))
-
-            # عرض الشكل الجديد
-            parent.display.Context.Display(ais_shape, True)
-            parent.display.FitAll()
-
-            print("✅ تم تنفيذ عملية القص وعرض النتيجة بلون Fusion.")
-
+            if cutter and base and not cutter.IsNull() and not base.IsNull():
+                result = BRepAlgoAPI_Cut(base, cutter).Shape()
+                parent.loaded_shape = result
+                parent.display_shape_with_axes(result)
+                print("✅ تم تنفيذ القطع بنجاح")
         except Exception as e:
-            print(f"🔥 كراش أثناء تنفيذ عملية القص: {e}")
+            print(f"🔥 كراش أثناء تنفيذ القطع: {e}")
 
     def rotate_selected_shape():
         try:
@@ -292,51 +234,6 @@ def create_shape_manager_page(parent):
         except Exception as e:
             print(f"🔥 كراش أثناء تغيير الحجم: {e}")
 
-    def reload_shapes():
-        """تحديث قائمة الأشكال يدويًا"""
-        try:
-            folder = os.path.join("frontend", "window", "library", "shapes")
-            if not os.path.exists(folder):
-                print(f"⚠️ المجلد '{folder}' غير موجود.")
-                return
-
-            page.shape_list.clear()
-            page.test_shapes.clear()
-
-            count = 0
-            for fname in os.listdir(folder):
-                if fname.lower().endswith(".dxf"):
-                    path = join(folder, fname)
-                    shape = smart_load_dxf(path)
-                    if shape and not shape.IsNull():
-                        name = basename(fname).replace(".dxf", "")
-                        page.test_shapes[name] = shape
-                        page.shape_list.addItem(name)
-                        count += 1
-
-            print(f"✅ تم تحديث القائمة ({count} شكل).")
-        except Exception as e:
-            print(f"🔥 خطأ أثناء تحديث الأشكال: {e}")
-
-        # 🕒 مراقبة تلقائية للمجلد لتحديث القائمة كل 3 ثوانٍ
-
-    from PyQt5.QtCore import QTimer
-    def auto_reload_shapes():
-        folder = os.path.join("frontend", "window", "library", "shapes")
-        current_files = [f for f in os.listdir(folder) if f.lower().endswith(".dxf")]
-        current_count = len(current_files)
-        prev_count = getattr(page, "_prev_shape_count", None)
-
-        if prev_count is None or prev_count != current_count:
-            print(f"🔄 تم اكتشاف تغيير بعدد ملفات DXF ({prev_count} → {current_count}). إعادة التحديث...")
-            reload_shapes()
-            page._prev_shape_count = current_count
-
-    watch_timer = QTimer()
-    watch_timer.timeout.connect(auto_reload_shapes)
-    watch_timer.start(3000)
-    page._watch_timer = watch_timer
-
     def import_dxf_file(page, shape_list):
         dxf_path, _ = QFileDialog.getOpenFileName(None, "اختر ملف DXF", "", "DXF Files (*.dxf)")
         if not dxf_path:
@@ -351,49 +248,20 @@ def create_shape_manager_page(parent):
                 json.dump({"last_dxf": dxf_path}, f)
             print(f"✅ تم تحميل الشكل '{name}' من DXF")
 
-
-    import os
-    from os.path import join
-
-    import os
-    from os.path import join, basename
-
-    def load_all_shapes_from_folder():
-        """
-        تحميل جميع ملفات DXF من المسار:
-        frontend/window/library/shapes/
-        وإنشاء المجلد إذا لم يكن موجودًا.
-        """
+    def load_last_shape():
         try:
-            folder = os.path.join("frontend", "window", "library", "shapes")
-
-            # إنشاء المجلد إذا لم يكن موجودًا
-            if not os.path.exists(folder):
-                os.makedirs(folder)
-                print(f"📂 تم إنشاء المجلد '{folder}' لأنه لم يكن موجودًا.")
-                return  # المجلد جديد، لا نحاول التحميل الآن
-
-            count = 0
-            for fname in os.listdir(folder):
-                if fname.lower().endswith(".dxf"):
-                    path = join(folder, fname)
+            with open("recent_shapes.json", "r") as f:
+                path = json.load(f).get("last_dxf")
+                if path:
                     shape = smart_load_dxf(path)
                     if shape and not shape.IsNull():
-                        name = basename(fname).replace(".dxf", "")
+                        name = basename(path).replace(".dxf", "")
                         page.test_shapes[name] = shape
-                        page.shape_list.addItem(name)
-                        count += 1
-
-            if count == 0:
-                print(f"⚠️ لم يتم العثور على أي ملفات DXF داخل '{folder}'.")
-            else:
-                print(f"✅ تم تحميل {count} ملف DXF من المجلد '{folder}'.")
-
+                        shape_list.addItem(name)
+                        page.shape_2d = shape
+                        print(f"✅ تم تحميل الشكل السابق '{name}' تلقائيًا")
         except Exception as e:
-            print(f"🔥 خطأ أثناء قراءة مجلد الأشكال: {e}")
-
-
-
+            print(f"⚠️ لا يوجد شكل محفوظ أو فشل التحميل: {e}")
 
     preview_btn.clicked.connect(lambda: preview_extrude(page, parent.display))
     rotate_btn.clicked.connect(rotate_selected_shape)
@@ -402,12 +270,5 @@ def create_shape_manager_page(parent):
     btn_import_dxf.clicked.connect(lambda: import_dxf_file(page, shape_list))
     shape_list.currentRowChanged.connect(on_select)
 
-
-
-
-    from frontend.window.shape_auto_preview import connect_auto_preview
-    connect_auto_preview(page, parent.display)
-    load_all_shapes_from_folder()
-
-
+    load_last_shape()
     return page

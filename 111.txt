@@ -17,3 +17,10 @@ https://raw.githubusercontent.com/syriantechno/cad3/master/frontend/window/float
 https://raw.githubusercontent.com/syriantechno/cad3/master/frontend/window/profile_window.py
 https://raw.githubusercontent.com/syriantechno/cad3/master/frontend/window/profiles_manager_window.py
 https://raw.githubusercontent.com/syriantechno/cad3/master/frontend/window/tools_manager_window.py
+
+cmake -G "Visual Studio 17 2022" -A x64 ^
+ -DOCC_INCLUDE_DIR="C:/occt/build/inc" ^
+ -DOCC_LIBRARY_DIR="C:/occt/build/win64/vc14/lib" ^
+ -DCMAKE_INSTALL_PREFIX="C:/pythonocc-core/install" ^
+ -DPYTHON_EXECUTABLE="C:/Users/codm/miniconda3/envs/occbuild/python.exe" ^
+ -DCMAKE_BUILD_TYPE=Release ..

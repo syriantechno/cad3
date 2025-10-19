@@ -196,13 +196,58 @@ def create_tool_window(parent):
     shape_btn.setObjectName("ShapeBtn")
     cancel_btn = QPushButton("Cancel")
     cancel_btn.setObjectName("CancelBtn")
+
+    def handle_cancel():
+        """تنظيف أي معاينة نشطة ثم إغلاق النافذة."""
+        try:
+            current_index = stacked.currentIndex()
+            current_page = stacked.widget(current_index)
+
+            # تنظيف AIS الخاصة بالمعاينة (مع التحقق من وجود Context)
+            if hasattr(current_page, "display") and hasattr(current_page.display, "Context"):
+                ctx = current_page.display.Context
+                try:
+                    # إزالة معاينات شائعة
+                    if hasattr(current_page, "_hole_preview_ais") and current_page._hole_preview_ais:
+                        ctx.Remove(current_page._hole_preview_ais, False)
+                    if hasattr(current_page, "preview_actor") and current_page.preview_actor:
+                        ctx.Remove(current_page.preview_actor, False)
+                    # إزالة أبعاد المعاينة إن وُجدت (قائمة من AIS_InteractiveObjects)
+                    if hasattr(current_page, "_preview_dim_shapes") and current_page._preview_dim_shapes:
+                        for _ais in list(current_page._preview_dim_shapes):
+                            try:
+                                if _ais:
+                                    ctx.Remove(_ais, False)
+                            except Exception:
+                                pass
+                        current_page._preview_dim_shapes.clear()
+                    ctx.UpdateCurrentViewer()
+                    print(f"🧹 [Cancel] تمت إزالة المعاينة من الصفحة {current_index}.")
+                except Exception as e:
+                    print(f"⚠️ [Cancel] خطأ أثناء إزالة المعاينة: {e}")
+
+            # تصفير مراجع المعاينة داخل الصفحة
+            for name in ["_hole_preview_ais", "preview_actor", "preview_shape"]:
+                if hasattr(current_page, name):
+                    setattr(current_page, name, None)
+
+        except Exception as e:
+            print(f"⚠️ [Cancel] فشل في تنظيف الصفحة: {e}")
+        finally:
+            dialog.hide()
+            print("✅ [Cancel] تم إغلاق النافذة بعد التنظيف.")
+
+    cancel_btn.clicked.connect(handle_cancel)
+
+
+
+
     apply_btn = QPushButton("Apply")
     apply_btn.setObjectName("ApplyBtn")
     bottom_layout.addWidget(cancel_btn)
     bottom_layout.addWidget(apply_btn)
     main_layout.addLayout(bottom_layout)
 
-    cancel_btn.clicked.connect(dialog.hide)
 
     def handle_apply():
         idx = stacked.currentIndex()

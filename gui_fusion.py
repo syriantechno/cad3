@@ -1,13 +1,3 @@
-# ✅ Patched v10: Use SetBgGradientColors for safe background on OCC 7.9, no grid1
-# ✅ Patched v9: Disabled grid/axes entirely for OCC 7.9 stability
-# ✅ Patched v8: Safe grid setup with fallback for OCC 7.9 (no crash)
-# ✅ Patched v7: Use SetBackgroundColors in _late_init_view (compatible with pythonocc 7.9)
-# ✅ Patched v6: Restored original layout, SetBackgroundColor for light gray, kept triedron
-# ✅ Patched v4: Moved QWidget import to top, fixed UnboundLocalError
-# ✅ Patched v3: Fixed viewer layout + Fusion background + Triedron
-# ✅ Patched v2: Fixed indentation + Fusion-style background (QFrame) + Triedron
-# ✅ Patched: Fusion-style background (QFrame) + Triedron only — original logic untouched
-# gui_fusion.py
 import logging
 from PyQt5.QtWidgets import (
     QMainWindow, QPushButton,
@@ -45,6 +35,62 @@ except Exception:
 from frontend.operation_browser import OperationBrowser
 from tools.axis_helpers import create_axes_with_labels
 
+
+
+
+from OCC.Core.AIS import AIS_Trihedron
+from OCC.Core.gp import gp_Ax3, gp_Pnt
+from OCC.Core.Prs3d import Prs3d_Drawer
+from OCC.Core.Quantity import Quantity_Color, Quantity_NOC_BLACK
+
+from OCC.Core.AIS import AIS_Trihedron
+from OCC.Core.gp import gp_Ax3, gp_Pnt
+
+def setup_viewer_grid_and_axes(display):
+    """إعداد الشبكة والمحاور لتكون ثابتة، غير قابلة للاختيار أو الهوفر"""
+    try:
+        # 🧭 إنشاء المحاور (Trihedron)
+        ax = gp_Ax3(gp_Pnt(0, 0, 0))
+        axes_ais = AIS_Trihedron(ax)
+        axes_ais.SetDatumDisplayMode(2)
+        display.Context.Display(axes_ais, True)
+
+        # ⚙️ إنشاء الشبكة
+        display.DisplayGrid()
+        grid_ais = getattr(display, "_grid_ais", None)
+
+        # 🔒 تعطيل التفاعل
+        if grid_ais:
+            display.Context.Deactivate(grid_ais)
+            # إلغاء التحديد والهوفر نهائيًا
+            try:
+                grid_ais.UnsetSelectionMode()
+                grid_ais.SetHilightMode(-1)
+            except Exception:
+                pass
+
+        display.Context.Deactivate(axes_ais)
+        try:
+            axes_ais.UnsetSelectionMode()
+            axes_ais.SetHilightMode(-1)
+        except Exception:
+            pass
+
+        # 🔧 تعطيل النظام التلقائي للاختيار
+        display.Context.SetAutoActivateSelection(False)
+
+        # 🧱 حفظهم بعد EraseAll
+        display.persistent_items = [axes_ais, grid_ais]
+
+        print("✅ الشبكة والمحاور الآن غير قابلة للتحديد أو التظليل (hover)")
+        return axes_ais, grid_ais
+
+    except Exception as e:
+        print(f"⚠️ خطأ أثناء إعداد الشبكة والمحاور: {e}")
+        return None, None
+
+
+
 class AlumCamGUI(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -61,6 +107,10 @@ class AlumCamGUI(QMainWindow):
 
         self.viewer_widget = qtViewer3d(self)
         self.display = self.viewer_widget._display
+        setup_viewer_grid_and_axes(self.display)
+
+        self.setup_fusion_environment()
+
 
         # 🧭 إنشاء المحاور مرة واحدة
         (
@@ -94,12 +144,10 @@ class AlumCamGUI(QMainWindow):
 
         self.display.EraseAll = erase_all_with_axes
 
-        # 1) فعّل event filter على ويدجت العارض
-        self.viewer_widget.installEventFilter(self)
 
-        # 2) اطبع حالة الـ Context بعد 1.5 ثانية (بعد ما يجهز العرض)
-        from PyQt5.QtCore import QTimer
-        QTimer.singleShot(1500, self._debug_hover_state)
+
+
+
 
 
         self.op_browser = OperationBrowser()
@@ -126,72 +174,7 @@ class AlumCamGUI(QMainWindow):
         self.delete_btn.clicked.connect(self.delete_selected_operation)
 
 
-        # ===== Background Setup =====
-        # def apply_background():
-        #     print("⚡ Applying background color...")
-        #
-        #     try:
-        #
-        #         self.display.set_bg_gradient_color(
-        #             Quantity_Color(0.92, 0.92, 0.92, Quantity_TOC_RGB),
-        #             Quantity_Color(0.92, 0.92, 0.92, Quantity_TOC_RGB),
-        #             True
-        #         )
-        #         self.display._display.View.FitAll()  # ✅ الصحيح
-        #         self.display._display.View.Update()  # مهم لتحديث الفيو
-        #         print("✅ الخلفية تم تطبيقها")
-        #     except Exception as e:
-        #         print(f"❌ خطأ أثناء تطبيق الخلفية: {e}")
 
-
-        self.draw_axes()
-
-        # def _apply_view_theme_once(self):
-        #     """تطبيق الخلفية + الشبكة + ألوان الهوفر/التحديد مرة واحدة فقط بعد أول عرض شكل."""
-        #     if getattr(self, "_theme_applied", False):
-        #         return
-        #
-        #     view = self.display.View
-        #     ctx = self.display.Context
-        #     viewer = self.display.Viewer
-        #
-        #     try:
-        #         # الخلفية (تدرّج رأسي لطيف)
-        #         from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
-        #         top = Quantity_Color(0.92, 0.92, 0.92, Quantity_TOC_RGB)
-        #         bottom = Quantity_Color(1.00, 1.00, 1.00, Quantity_TOC_RGB)
-        #         try:
-        #             # 1 = Vertical (أعلى → أسفل)
-        #             view.SetBgGradientColors(top, bottom, 1, True)
-        #             view.Redraw()
-        #         except Exception:
-        #             pass
-        #
-        #         # الشبكة (على مستوى الـ Viewer)
-        #         try:
-        #             from OCC.Core.Aspect import Aspect_GT_Rectangular, Aspect_GDM_Lines
-        #             from OCC.Core.Quantity import Quantity_NOC_BLACK
-        #             viewer.ActivateGrid(Aspect_GT_Rectangular, Aspect_GDM_Lines)
-        #             viewer.SetPrivilegedPlane(0.0, 0.0, 1.0, 0.0)
-        #             viewer.SetGridColor(Quantity_NOC_BLACK)
-        #             viewer.DisplayGrid()
-        #         except Exception:
-        #             pass
-        #
-        #         # ألوان hover و selection
-        #         try:
-        #             hover = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)  # رمادي فاتح بدل التركواز
-        #             select = Quantity_Color(1.0, 0.6, 0.0, Quantity_TOC_RGB)  # برتقالي باهت
-        #             ctx.SetHighlightColor(hover)
-        #             ctx.SetSelectionColor(select)
-        #             ctx.SetAutomaticHighlight(True)
-        #         except Exception:
-        #             pass
-        #
-        #         self._theme_applied = True
-        #         print("✅ View theme applied once (background, grid, hover/selection).")
-        #     except Exception as e:
-        #         print(f"[WARN] theme apply skipped: {e}")
 
         # ===== Floating tool window =====
         self.tool_dialog, self.show_tool_page = create_tool_window(self)
@@ -224,161 +207,6 @@ class AlumCamGUI(QMainWindow):
         self.display.EraseAll()
 
         self.display.FitAll()
-
-
-    def _debug_hover_state(self):
-        """يطبع حالة الـ Context للتأكد من تفعيل الهوفر ورؤية ألوان الستايل."""
-        try:
-            ctx = self.display.Context
-        except Exception:
-            print("[DEBUG] display.Context غير جاهز")
-            return
-
-        print("=== [DEBUG] Hover State ===")
-        # هل الهوفر التلقائي مفعّل؟
-        try:
-            print("AutomaticHighlight:", ctx.AutomaticHighlight())
-        except Exception:
-            print("AutomaticHighlight: (غير مدعوم في الإصدار الحالي)")
-
-        # هل هناك جسم تحت المؤشر أو جسم مُختار؟
-        try:
-            print("HasCurrent:", ctx.HasCurrent())
-            print("HasSelected:", ctx.HasSelected())
-        except Exception as e:
-            print("HasCurrent/HasSelected check failed:", e)
-
-        # اطبع لون ستايل الهوفر الحالي
-        try:
-            hs = ctx.HighlightStyle()  # Prs3d_Drawer
-            col = hs.Color()
-            print("Hover color:", col.Red(), col.Green(), col.Blue())
-        except Exception:
-            # بعض الإصدارات القديمة
-            try:
-                c = ctx.HighlightColor()
-                print("Hover color:", c.Red(), c.Green(), c.Blue())
-            except Exception:
-                print("Hover color: (غير متاح للقراءة)")
-
-        # اطبع لون ستايل التحديد
-        try:
-            ss = ctx.SelectionStyle()
-            col = ss.Color()
-            print("Selection color:", col.Red(), col.Green(), col.Blue())
-        except Exception:
-            print("Selection color: (غير متاح للقراءة)")
-        print("===========================")
-
-    def eventFilter(self, obj, event):
-        """تتبّع حركة الماوس فوق نافذة العرض لمعرفة إن كان يلتقط AIS أم لا."""
-        from PyQt5.QtCore import QEvent
-        if obj is self.viewer_widget and event.type() == QEvent.MouseMove:
-            try:
-                ctx = self.display.Context
-                if ctx.HasCurrent():
-                    # يوجد كائن تحت المؤشر
-                    try:
-                        ais = ctx.Current()  # قد يرمي استثناء، لذا نحوطه
-                        print("[DEBUG] Hovering AIS object:", ais)
-                    except Exception:
-                        print("[DEBUG] Hovering: has current (AIS موجود)")
-                else:
-                    print("[DEBUG] Hovering over empty space")
-            except Exception:
-                pass
-        return super().eventFilter(obj, event)
-
-    def apply_hover_and_selection_style(self):
-        """تهيئة لون الهوفر والتحديد (متوافقة مع OCCT 7.9)."""
-        print("[🎨] Applying hover & selection styles (OCCT 7.9)...")
-
-        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
-        from OCC.Core.Prs3d import Prs3d_Drawer
-
-        ctx = self.display.Context
-
-        # ⚪ لون الهوفر: رمادي فاتح
-        hover_color = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
-        hover_style = Prs3d_Drawer()
-        hover_style.SetColor(hover_color)
-        hover_style.SetDisplayMode(1)
-        hover_style.SetTransparency(0.0)
-        ctx.SetHighlightStyle(hover_style)
-
-        # 🟠 لون التحديد: برتقالي
-        select_color = Quantity_Color(1.0, 0.6, 0.0, Quantity_TOC_RGB)
-        select_style = Prs3d_Drawer()
-        select_style.SetColor(select_color)
-        select_style.SetDisplayMode(1)
-        select_style.SetTransparency(0.0)
-        ctx.SetSelectionStyle(select_style)
-
-        try:
-            ctx.SetAutomaticHighlight(True)
-        except Exception:
-            pass
-        c = self.display.Context.HighlightStyle().Color()
-        print("[DEBUG] New hover color:", c.Red(), c.Green(), c.Blue())
-
-        print("[✅] Hover & selection styles applied for OCCT 7.9")
-
-    def draw_axes(self):
-
-        ctx = self.display.Context
-        ctx.Display(self._axis_x, True)
-        ctx.Display(self._axis_y, True)
-        ctx.Display(self._axis_z, True)
-
-    # ===== Late init =====
-
-
-        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB, Quantity_NOC_BLACK
-        from OCC.Core.Aspect import Aspect_GT_Rectangular, Aspect_GDM_Lines
-
-        view = self.display.View
-        viewer = self.display.Viewer
-
-        print("[init] بدء تهيئة العرض الثلاثي")
-
-        # خلفية رمادية
-        light_gray = Quantity_Color(0.85, 0.85, 0.85, Quantity_TOC_RGB)
-        view.SetBackgroundColor(light_gray)
-        print("[background] تم تعيين الخلفية إلى رمادي فاتح")
-
-        # تفعيل المحاور
-        try:
-            print("[trihedron] جاري تفعيل المحاور...")
-            view.TriedronDisplay(True)
-            view.SetTrihedronSize(0.05)
-
-            print("[trihedron] تم تفعيل المحاور")
-        except Exception as e:
-            print(f"[trihedron] error: {e}")
-
-        # تفعيل الشبكة
-        try:
-            print("[grid] تفعيل الشبكة...")
-            viewer.ActivateGrid(Aspect_GT_Rectangular, Aspect_GDM_Lines)
-            viewer.SetPrivilegedPlane(0.0, 0.0, 1.0, 0.0)
-            viewer.DisplayGrid()
-            viewer.SetGridColor(Quantity_NOC_BLACK)
-            print("[grid] الشبكة مفعّلة")
-        except Exception as e:
-            print(f"[grid] خطأ في الشبكة: {e}")
-
-        view.MustBeResized()
-        view.Redraw()
-        from OCC.Core.V3d import V3d_TypeOfOrientation
-        view.SetProj(V3d_TypeOfOrientation.V3d_XposYnegZpos)
-        view.SetZoom(1.0)
-        view.Redraw()
-
-        print("[view] تم إعادة رسم العرض")
-
-        self.display.Context.UpdateCurrentViewer()
-
-        print("[context] تم تحديث السياق")
 
     def on_toggle_grid_axes(self, checked: bool):
         try:
@@ -495,3 +323,139 @@ class AlumCamGUI(QMainWindow):
                     self.display.EraseAll()
             else:
                 self.display.EraseAll()
+
+    # ============================================================
+    # 🎨 تهيئة الخلفية والشبكة بأسلوب Fusion (متوافق مع Viewer3d)
+    # ============================================================
+    def setup_fusion_environment(self):
+        """تهيئة الخلفية والشبكة والمحاور بأسلوب Fusion (ثابتة في المشهد)."""
+        from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
+        from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax1
+        from OCC.Core.AIS import AIS_Axis, AIS_Shape
+        from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+        from OCC.Core.TopoDS import TopoDS_Compound
+        from OCC.Core.BRep import BRep_Builder
+
+        try:
+            viewer = self.display.Viewer
+            view = self.display.View
+            ctx = self.display.Context
+
+            # 🌄 خلفية رمادية متدرجة مثل Fusion
+            top = Quantity_Color(0.95, 0.96, 0.97, Quantity_TOC_RGB)
+            bottom = Quantity_Color(0.80, 0.82, 0.85, Quantity_TOC_RGB)
+            view.SetBgGradientColors(top, bottom, True)
+            viewer.SetDefaultLights()
+            viewer.SetLightOn()
+            print("[Fusion] ✅ الخلفية المتدرجة مفعلة.")
+
+            # 🧹 تعطيل الشبكة الافتراضية
+            try:
+                viewer.DeactivateGrid()
+            except Exception:
+                pass
+
+            # 🕸 إنشاء شبكة من خطوط BRep
+            step = 25.0
+            half_size = 500
+            gray = Quantity_Color(0.82, 0.82, 0.82, Quantity_TOC_RGB)
+            builder = BRep_Builder()
+            comp = TopoDS_Compound()
+            builder.MakeCompound(comp)
+
+            n_lines = int(half_size // step)
+            for i in range(-n_lines, n_lines + 1):
+                y = i * step
+                x = i * step
+                e1 = BRepBuilderAPI_MakeEdge(gp_Pnt(-half_size, y, 0), gp_Pnt(half_size, y, 0)).Edge()
+                e2 = BRepBuilderAPI_MakeEdge(gp_Pnt(x, -half_size, 0), gp_Pnt(x, half_size, 0)).Edge()
+                builder.Add(comp, e1)
+                builder.Add(comp, e2)
+
+            grid_shape = AIS_Shape(comp)
+            grid_shape.SetColor(gray)
+            grid_shape.SetTransparency(0.85)
+            self._fusion_grid = grid_shape  # حفظها كمُتغير دائم
+            ctx.Display(self._fusion_grid, False)
+            print("[Fusion] ✅ الشبكة مفعّلة.")
+
+            # 🧭 إنشاء المحاور X/Y/Z وتخزينها
+            red = Quantity_Color(1, 0, 0, Quantity_TOC_RGB)
+            green = Quantity_Color(0, 1, 0, Quantity_TOC_RGB)
+            blue = Quantity_Color(0, 0, 1, Quantity_TOC_RGB)
+
+            x_axis = AIS_Axis(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(1, 0, 0)))
+            y_axis = AIS_Axis(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 1, 0)))
+            z_axis = AIS_Axis(gp_Ax1(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1)))
+            x_axis.SetColor(red)
+            y_axis.SetColor(green)
+            z_axis.SetColor(blue)
+
+            self._fusion_axes = [x_axis, y_axis, z_axis]
+            for ax in self._fusion_axes:
+                ctx.Display(ax, False)
+            print("[Fusion] ✅ المحاور مفعّلة.")
+
+            view.MustBeResized()
+            view.Redraw()
+            # 🧠 تغليف EraseAll الأصلي ليعيد عرض الشبكة والمحاور تلقائيًا
+            if not hasattr(self.display, "_fusion_wrapped"):
+                original_erase_all = self.display.EraseAll
+
+                def erase_all_with_fusion():
+                    """مسح كامل المشهد مع إعادة عرض الشبكة والمحاور بعده مباشرة."""
+                    try:
+                        # استدعاء المسح الأصلي
+                        original_erase_all()
+                        # إعادة عرض الشبكة والمحاور
+                        if hasattr(self, "_fusion_grid"):
+                            self.display.Context.Display(self._fusion_grid, False)
+                        if hasattr(self, "_fusion_axes"):
+                            for ax in self._fusion_axes:
+                                self.display.Context.Display(ax, False)
+                        self.display.View.Redraw()
+                        print("[Fusion] ♻️ تمت إعادة عرض الشبكة والمحاور بعد EraseAll.")
+                    except Exception as e:
+                        print(f"[Fusion] ⚠ فشل أثناء إعادة عرض البيئة بعد EraseAll: {e}")
+
+                # استبدال دالة EraseAll الأصلية بالنسخة الجديدة
+                self.display.EraseAll = erase_all_with_fusion
+                self.display._fusion_wrapped = True
+                print("[Fusion] 🧩 تم تغليف EraseAll بنسخة Fusion.")
+
+
+        except Exception as e:
+            print(f"[⚠] Failed to setup Fusion environment: {e}")
+
+    def redraw_fusion_environment(self):
+        """إعادة عرض الشبكة والمحاور في حال تم مسحها بعد تحميل شكل."""
+        try:
+            if hasattr(self, "_fusion_grid"):
+                self.display.Context.Display(self._fusion_grid, False)
+            if hasattr(self, "_fusion_axes"):
+                for ax in self._fusion_axes:
+                    self.display.Context.Display(ax, False)
+            self.display.View.Redraw()
+            print("[Fusion] ♻️ تمت إعادة عرض الشبكة والمحاور.")
+        except Exception as e:
+            print(f"[Fusion] ⚠ فشل إعادة عرض الشبكة والمحاور: {e}")
+
+    # استيرادات مكتبة PythonOCC الأساسية
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

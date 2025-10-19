@@ -42,9 +42,7 @@ class ExtrudeWindow(QWidget):
         hlayout.addWidget(self.distance_input)
         layout.addLayout(hlayout)
 
-        apply_btn = QPushButton("🧱 Apply Extrude")
-        apply_btn.clicked.connect(self.apply_extrude)
-        layout.addWidget(apply_btn)
+
 
     # ================================
     # 🧠 تحديث المعاينة الفورية
@@ -135,6 +133,11 @@ class ExtrudeWindow(QWidget):
         except Exception as e:
             print(f"[⚠] Dimension drawing failed after extrude: {e}")
 
-        self.display.Context.UpdateCurrentViewer()
-        self.display.FitAll()
+        try:
+            # تحديث العرض فقط بدون FitAll
+            self.display.Context.UpdateCurrentViewer()
+            self.display.Repaint()
+            print("🎯 Extrude done (camera unchanged)")
+        except Exception as e:
+            print(f"⚠️ Display update failed: {e}")
         print(f"🟦 Extruded along Y by {height} mm")

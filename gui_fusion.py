@@ -35,13 +35,12 @@ except Exception:
 from frontend.operation_browser import OperationBrowser
 from tools.axis_helpers import create_axes_with_labels
 
+from tools.gcode_generator import generate_program
 
+from PyQt5.QtWidgets import QPushButton, QMessageBox
+from pathlib import Path
+from tools.gcode_generator import generate_program, save_program, GCodeSettings
 
-
-from OCC.Core.AIS import AIS_Trihedron
-from OCC.Core.gp import gp_Ax3, gp_Pnt
-from OCC.Core.Prs3d import Prs3d_Drawer
-from OCC.Core.Quantity import Quantity_Color, Quantity_NOC_BLACK
 
 from OCC.Core.AIS import AIS_Trihedron
 from OCC.Core.gp import gp_Ax3, gp_Pnt
@@ -151,6 +150,14 @@ class AlumCamGUI(QMainWindow):
 
 
         self.op_browser = OperationBrowser()
+        # زر توليد G-code كامل
+        from PyQt5.QtWidgets import QPushButton, QMessageBox
+        from pathlib import Path
+        from tools.gcode_generator import generate_program, save_program, GCodeSettings
+
+        self.generate_btn = QPushButton("Generate G-Code")
+        self.generate_btn.clicked.connect(self._export_gcode)
+
         self.op_browser.setStyleSheet("background-color: rgba(220, 220, 220, 180);")
         self.op_browser.setFixedWidth(250)
 
@@ -196,6 +203,19 @@ class AlumCamGUI(QMainWindow):
         self.loaded_shape = None
         self.hole_preview = None
         self.extrude_axis = "Y"
+
+    def _export_gcode(self):
+        try:
+            ops = self.op_browser.list_operations()
+            if not ops:
+                QMessageBox.information(self, "G-Code", "لا توجد عمليات في الشجرة.")
+                return
+            settings = GCodeSettings()  # لاحقًا نربط feed/spindle من UI
+            program = generate_program(ops, settings)
+            out_path = save_program(program, Path("output/gcode"), "full_program")
+            QMessageBox.information(self, "G-Code", f"تم توليد G-Code:\n{out_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "G-Code Error", str(e))
 
     def on_operation_selected(self, category, name):
         item = self.op_browser.currentItem()

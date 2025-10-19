@@ -59,11 +59,11 @@ class HoleWindow(QWidget):
         # 🧱 أزرار المعاينة والتطبيق
         btn_layout = QHBoxLayout()
         preview_btn = QPushButton("👁 Preview Hole")
-        apply_btn = QPushButton("🧱 Apply Hole")
+
         preview_btn.clicked.connect(self._update_preview)
-        apply_btn.clicked.connect(self.apply_hole)
+
         btn_layout.addWidget(preview_btn)
-        btn_layout.addWidget(apply_btn)
+
         layout.addLayout(btn_layout)
 
     def _connect_live_preview(self):
@@ -181,5 +181,5 @@ class HoleWindow(QWidget):
         hole_size_dimensions(self.display, x, y, z, dia, axis, depth, result, offset_above=10, preview=False)
 
         self.display.Context.UpdateCurrentViewer()
-        self.display.FitAll()
+        self.display.Repaint()
         print(f"🧱 Hole applied: axis={axis}, dia={dia}, depth={depth}, at ({x},{y},{z})")

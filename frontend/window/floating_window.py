@@ -248,96 +248,118 @@ def create_tool_window(parent):
     bottom_layout.addWidget(apply_btn)
     main_layout.addLayout(bottom_layout)
 
-
     def handle_apply():
+        """زر Apply العام لجميع الصفحات"""
         idx = stacked.currentIndex()
+        print(f"🟢 [Apply] Clicked on page index {idx}")
 
+        # Extrude Page
         if idx == 0:
-            # Extrude
             try:
-                parent.extrude_clicked_from_window()
-                profile_name = getattr(parent, "active_profile_name", None)
-                distance_val = getattr(parent, "last_extrude_distance", None)
-                if profile_name and distance_val and hasattr(parent, "op_browser"):
-                    parent.op_browser.add_extrude(profile_name, distance_val)
+                print("🧱 [Apply] Running Extrude apply_extrude() safely...")
                 dialog.extrude_page.apply_extrude()
+
+                # 🟢 اجلب القيم الصحيحة من واجهة المستخدم
+                distance_val = float(dialog.extrude_page.distance_input.text().strip() or 0)
+
+                # 🧩 اربط العملية بالبروفايل الحالي
+                profile_name = getattr(parent, "active_profile_name", None)
+                if not profile_name:
+                    QMessageBox.warning(dialog, "Extrude", "⚠️ الرجاء اختيار Profile أولاً.")
+                    return
+
+                # 🧱 أضف العملية إلى شجرة العمليات
+                if hasattr(parent, "op_browser"):
+                    parent.op_browser.add_extrude(profile_name, distance_val, axis="Y")
+
                 dialog.hide()
+                print(f"✅ [Apply] Extrude completed successfully for profile '{profile_name}', height={distance_val}")
+
             except Exception as e:
                 QMessageBox.critical(dialog, "Extrude Error", str(e))
-                return
+                print(f"🔥 [Apply] Extrude failed: {e}")
 
+        # Profile Page
         elif idx == 1:
-            # Profile Page
-            prof = profile_page.get_profile_data()
-            name = prof["name"]
-            if not name:
-                QMessageBox.information(dialog, "Profile", "Please enter profile Name.")
-                return
-            src_dxf = prof["dxf"]
-            if not src_dxf:
-                QMessageBox.information(dialog, "Profile", "Please choose a DXF file.")
-                return
             try:
+                prof = profile_page.get_profile_data()
+                name = prof["name"]
+                parent.active_profile_name = name  # لتسجيل البروفايل الحالي
+                if not name:
+                    QMessageBox.information(dialog, "Profile", "Please enter profile Name.")
+                    return
+                src_dxf = prof["dxf"]
+                if not src_dxf:
+                    QMessageBox.information(dialog, "Profile", "Please choose a DXF file.")
+                    return
+
                 shape = load_dxf_file(src_dxf)
                 if shape is None:
                     raise RuntimeError("Invalid DXF shape.")
-                small_display = profile_page._small_display
-                if small_display is not None:
-                    small_display.EraseAll()
-                    small_display.DisplayShape(shape, update=True)
-                    small_display.FitAll()
 
+                # حفظ في قاعدة البيانات/القرص (كما كان عندك)
                 profile_dir = Path("profiles") / name
                 profile_dir.mkdir(parents=True, exist_ok=True)
-                dxf_dst = profile_dir / f"{name}.dxf"
-                img_path = profile_dir / f"{name}.png"
-                try:
-                    from tools.profile_tools import _dump_display_png
-                    _dump_display_png(small_display, shape, img_path)
-                except Exception:
-                    pass
-                shutil.copy2(src_dxf, dxf_dst)
+                shutil.copy2(src_dxf, profile_dir / f"{name}.dxf")
+
                 db = ProfileDB()
                 db.add_profile(
                     name=name,
                     code=profile_page._p_code.text().strip(),
                     dimensions=profile_page._p_dims.text().strip(),
                     notes=profile_page._p_notes.text().strip(),
-                    dxf_path=str(dxf_dst),
+                    dxf_path=str(profile_dir / f"{name}.dxf"),
                     brep_path="",
-                    image_path=str(img_path) if img_path.exists() else ""
+                    image_path=""
                 )
-                QMessageBox.information(dialog, "Saved", "Profile saved successfully.")
+
                 if hasattr(parent, "op_browser"):
                     parent.op_browser.add_profile(name)
+
+                QMessageBox.information(dialog, "Saved", "Profile saved successfully.")
                 dialog.hide()
+                print("✅ [Apply] Profile saved successfully.")
             except Exception as e:
-                QMessageBox.critical(dialog, "Error", f"Failed to save profile:\n{e}")
-                return
+                QMessageBox.critical(dialog, "Profile Error", str(e))
+                print(f"🔥 [Apply] Profile failed: {e}")
 
-        elif idx == 2:
-            QMessageBox.information(dialog, "Profiles", "Use Load / OK button in page.")
-            return
-
-        elif idx == 3:
-            QMessageBox.information(dialog, "Tools", "Save Tool not implemented.")
-            return
+        # Hole Page
         elif idx == 5:
-            # 🟡 Hole Page
-            values = hole_page.get_values()
-            if values is None:
-                QMessageBox.warning(dialog, "Hole", "الرجاء إدخال قيم صحيحة.")
-                return
-            x, y, z, dia, axis = values
-            print(f"[🟢 HOLE] X={x}, Y={y}, Z={z}, Dia={dia}, Axis={axis}")
-            dialog.hole_page.hole_clicked()
+            try:
+                vals = dialog.hole_page._get_values()
+                if vals is None or len(vals) < 7:
+                    QMessageBox.warning(dialog, "Hole", "⚠️ قيم غير مكتملة أو فارغة.")
+                    return
+                x, y, z, dia, depth, _, axis = vals
 
+                # نفّذ الحفر في العارض
+                dialog.hole_page.apply_hole()
+
+                # سجّل العملية في الشجرة
+                if hasattr(parent, "op_browser"):
+                    profile_name = getattr(parent, "active_profile_name", "Unnamed")
+                    parent.op_browser.add_hole(profile_name, (x, y, z), dia, depth, axis)
+
+                dialog.hide()
+                print("✅ [Apply] Hole executed successfully and added to operation tree.")
+            except Exception as e:
+                QMessageBox.critical(dialog, "Hole Error", str(e))
+                print(f"🔥 [Apply] Hole failed: {e}")
+
+        # Shape Page (لو عندك)
         elif idx == 7:
-            # 🆕 تطبيق أداة مكتبة الأشكال
-            dialog.shape_page._on_ok_clicked()
-            dialog.hide()
+            try:
+                print("📦 [Apply] Shape library OK clicked.")
+                dialog.shape_page._on_ok_clicked()
+                dialog.hide()
+                print("✅ [Apply] Shape loaded successfully.")
+            except Exception as e:
+                QMessageBox.critical(dialog, "Shape Error", str(e))
+                print(f"🔥 [Apply] Shape failed: {e}")
 
-            dialog.hide()
+        else:
+            QMessageBox.information(dialog, "Info", "No apply action for this page yet.")
+            print(f"[Apply] No handler for page index {idx}.")
 
     apply_btn.clicked.connect(handle_apply)
 

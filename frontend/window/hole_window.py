@@ -183,3 +183,25 @@ class HoleWindow(QWidget):
         self.display.Context.UpdateCurrentViewer()
         self.display.Repaint()
         print(f"🧱 Hole applied: axis={axis}, dia={dia}, depth={depth}, at ({x},{y},{z})")
+        # 🧩 تسجيل العملية في Operation Browser (لـ G-Code)
+        try:
+            op_data = {
+                "type": "Hole",
+                "x": x,
+                "y": y,
+                "z": z,
+                "depth": depth,
+                "dia": dia,
+                "axis": axis,
+                "feed": 1200,  # قيمة افتراضية، لاحقاً يمكن أخذها من إعدادات G-Code
+            }
+
+            # الوصول إلى المتصفح عبر الـparent الرئيسي
+            main_window = getattr(self.parent(), "main_window", None)
+            if main_window and hasattr(main_window, "operation_browser"):
+                main_window.operation_browser.add_operation(op_data)
+                print(f"[📋] Hole operation added to Operation Browser.")
+            else:
+                print("⚠️ Operation Browser not available.")
+        except Exception as e:
+            print(f"[❌] Failed to register Hole operation: {e}")

@@ -85,6 +85,16 @@ def create_topbar_tabs(parent):
 
     create_tab("Tools", tools_tools)
 
+    # ===== G-Code Tab =====
+    g_code = [
+
+
+        ("frontend/icons/tools_manager.png", "G-code", lambda: parent.show_extrude_window(8), False),
+        ("frontend/icons/tools_manager.png", "sim_page", lambda: parent.show_extrude_window(9), False)
+    ]
+
+    create_tab("G-Code", g_code)
+
 
 
     # ===== Help Tab =====

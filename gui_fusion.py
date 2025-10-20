@@ -107,6 +107,8 @@ class AlumCamGUI(QMainWindow):
         self.viewer_widget = qtViewer3d(self)
         self.display = self.viewer_widget._display
         setup_viewer_grid_and_axes(self.display)
+        self.active_profile_name = None  # ✅ تعريف أولي للبروفايل النشط
+        self.active_profile_id = None  # رقم البروفايل النشط
 
         self.setup_fusion_environment()
 
@@ -132,7 +134,7 @@ class AlumCamGUI(QMainWindow):
         )
 
         # 🟡 عرضهم لأول مرة
-        show_axes(self.display, self._axes_tuple)
+        # show_axes(self.display, self._axes_tuple)
 
         # 🧠 تغليف EraseAll الأصلي ليعيد عرض المحاور تلقائيًا بعد كل عملية مسح
         original_erase_all = self.display.EraseAll
@@ -150,13 +152,7 @@ class AlumCamGUI(QMainWindow):
 
 
         self.op_browser = OperationBrowser()
-        # زر توليد G-code كامل
-        from PyQt5.QtWidgets import QPushButton, QMessageBox
-        from pathlib import Path
-        from tools.gcode_generator import generate_program, save_program, GCodeSettings
 
-        self.generate_btn = QPushButton("Generate G-Code")
-        self.generate_btn.clicked.connect(self._export_gcode)
 
         self.op_browser.setStyleSheet("background-color: rgba(220, 220, 220, 180);")
         self.op_browser.setFixedWidth(250)

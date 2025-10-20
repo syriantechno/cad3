@@ -12,7 +12,7 @@ from frontend.window.box_cut_window import BoxCutWindow
 from frontend.window.profiles_manager_v2_window import create_profile_manager_page_v2
 from frontend.window.hole_window import HoleWindow
 from frontend.window.shape_manager_window import create_shape_manager_page
-
+from frontend.window.gcode_generator_page import GCodeGeneratorPage
 
 
 
@@ -163,8 +163,22 @@ def create_tool_window(parent):
     print("[DEBUG] Shape Manager Page is being created")
 
     shape_page = create_shape_manager_page(parent)
+    gcode_page = GCodeGeneratorPage(parent)
+    # 🔗 تمرير مراجع التشغيل للنظام
+    # ✅ ربط نافذة الجي كود مع المتصفح الحقيقي المستخدم في AlumCamGUI
+    # 🔗 تمرير المراجع من النافذة الرئيسية
+    if hasattr(parent, "op_browser"):
+        gcode_page.operation_browser = parent.op_browser
+    # ✅ تمرير معرف البروفايل النشط
+    if hasattr(parent, "active_profile_id"):
+        gcode_page.active_profile_id = parent.active_profile_id
+    else:
+        print("[DEBUG] No active_profile_id found in parent.")
 
+    from frontend.window.gcode_simulator_page import GCodeSimulatorPage
 
+    # داخل create_tool_window
+    sim_page = GCodeSimulatorPage(parent)
 
     # إضافة إلى الستاك
     stacked.addWidget(extrude_page)             # index 0
@@ -175,6 +189,8 @@ def create_tool_window(parent):
     stacked.addWidget(hole_page)                # index 5 🆕
     stacked.addWidget(box_cut_page)             # index 6 🆕
     stacked.addWidget(shape_page)               # index 7 🆕
+    stacked.addWidget(gcode_page)               # index 8 🆕
+    stacked.addWidget(sim_page)                 # index 9 🆕
 
 
     # ✅ حفظ المراجع داخل الـ dialog
@@ -186,6 +202,8 @@ def create_tool_window(parent):
     dialog.hole_page = hole_page
     dialog.box_cut_page = box_cut_page
     dialog.shape_page = shape_page
+    dialog.gcode_page = gcode_page
+    dialog.sim_page = sim_page
 
 
 
@@ -250,6 +268,12 @@ def create_tool_window(parent):
 
     def handle_apply():
         """زر Apply العام لجميع الصفحات"""
+        print("\n\n===== [DEBUG TRACK] handle_apply called =====")
+        print("DEBUG -> parent:", parent)
+        print("DEBUG -> has active_profile_name:", hasattr(parent, "active_profile_name"))
+        if hasattr(parent, "active_profile_name"):
+            print("DEBUG -> parent.active_profile_name =", getattr(parent, "active_profile_name"))
+
         idx = stacked.currentIndex()
         print(f"🟢 [Apply] Clicked on page index {idx}")
 
@@ -284,7 +308,9 @@ def create_tool_window(parent):
             try:
                 prof = profile_page.get_profile_data()
                 name = prof["name"]
-                parent.active_profile_name = name  # لتسجيل البروفايل الحالي
+                parent.active_profile_name = name
+                print(f"✅ Active profile set to: {name}")
+
                 if not name:
                     QMessageBox.information(dialog, "Profile", "Please enter profile Name.")
                     return
@@ -322,6 +348,38 @@ def create_tool_window(parent):
             except Exception as e:
                 QMessageBox.critical(dialog, "Profile Error", str(e))
                 print(f"🔥 [Apply] Profile failed: {e}")
+
+        # Profiles Manager Page
+        elif idx == 2:
+            try:
+                # ✅ الحصول على البروفايل المحدد من قائمة البروفايل مانجر
+                selected_item = dialog.profiles_manager_page.list_widget.currentItem()
+                if not selected_item:
+                    QMessageBox.warning(dialog, "Profiles Manager", "⚠️ الرجاء اختيار بروفايل من القائمة.")
+                    return
+
+                profile_name = selected_item.text()
+                parent.active_profile_name = profile_name
+                print(f"✅ [Manager] Active profile set to: {profile_name}")
+                print("✅ [DEBUG] Stored active_profile_name in parent:", profile_name)
+                print("DEBUG parent id:", id(parent))
+                # ✅ تحديث النافذة الرئيسية أيضاً
+                from PyQt5.QtWidgets import QApplication
+                from gui_fusion import AlumCamGUI
+                for w in QApplication.topLevelWidgets():
+                    if isinstance(w, AlumCamGUI):
+                        w.active_profile_name = profile_name
+                        print(f"✅ [GLOBAL] Profile '{profile_name}' registered in main window")
+                        break
+
+                QMessageBox.information(dialog, "Profile Manager", f"✅ تم تحميل البروفايل: {profile_name}")
+                dialog.hide()
+
+            except Exception as e:
+                QMessageBox.critical(dialog, "Profile Manager Error", str(e))
+                print(f"🔥 [Profile Manager] Failed to set active profile: {e}")
+
+
 
         # Hole Page
         elif idx == 5:
@@ -383,6 +441,10 @@ def create_tool_window(parent):
             header.setText("Hole")
         elif index == 7:
             header.setText("Shape")
+        elif index == 8:
+            header.setText("G-Code")
+        elif index == 8:
+            header.setText("sim page")
         else:
             header.setText("Extrude")
         dialog.show()

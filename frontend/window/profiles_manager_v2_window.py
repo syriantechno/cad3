@@ -139,6 +139,12 @@ def create_profile_manager_page_v2(parent, profile_page_getter=None, stacked_get
 
             main_window = parent
             display = main_window.display
+            # ✅ تسجيل معرف البروفايل النشط في النافذة الرئيسية
+            try:
+                main_window.active_profile_id = page.selected.get("pid")
+                print(f"✅ [PROFILE] Active profile set to ID = {main_window.active_profile_id}")
+            except Exception as e:
+                print(f"⚠️ Failed to set active profile ID: {e}")
 
             # ✅ تنظيف أي عرض قديم من البروفايل نفسه
             if not hasattr(main_window, "profile_ais_list"):
@@ -156,6 +162,20 @@ def create_profile_manager_page_v2(parent, profile_page_getter=None, stacked_get
 
             # حفظ الشكل في الواجهة
             main_window.loaded_shape = shape
+            # ✅ تسجيل اسم البروفايل النشط في النافذة الرئيسية
+            try:
+                profile_name = page.selected.get("name")
+                from PyQt5.QtWidgets import QApplication
+                from gui_fusion import AlumCamGUI
+                for w in QApplication.topLevelWidgets():
+                    if isinstance(w, AlumCamGUI):
+                        w.active_profile_name = profile_name
+                        print(f"✅ [GLOBAL] Active profile set via Profile Manager v2: {profile_name}")
+                        break
+                else:
+                    print("⚠️ [GLOBAL] AlumCamGUI not found while setting profile name (v2)")
+            except Exception as e:
+                print(f"⚠️ Failed to register active profile (v2): {e}")
 
             # ✨ قياسات X + Z (تبقى كما هي)
             from OCC.Core.Bnd import Bnd_Box

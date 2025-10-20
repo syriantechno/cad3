@@ -216,3 +216,14 @@ class OperationBrowser(QTreeWidget):
         self._profile_items.clear()
         self._extrude_items.clear()
         print("🧹 [OPS] Cleared all operations.")
+
+    def get_all_operations(self):
+        """إرجاع قائمة بكل العمليات الحالية المضافة في الشجرة"""
+        ops = []
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            data = item.data(0, Qt.UserRole)
+            if data:
+                ops.append(data)
+        return ops
+

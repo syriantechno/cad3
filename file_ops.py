@@ -88,12 +88,12 @@ def save_project_dialog(parent):
 # ==========================================================
 # 📂 فتح مشروع (عرض الشكل + استعادة العمليات)
 # ==========================================================
-def open_project_dialog(parent):
-    """فتح مشروع AlumCam (.alucam) واسترجاع الشكل + العمليات"""
-    from OCC.Core.BRep import BRep_Builder
-    from OCC.Core.TopoDS import TopoDS_Shape
-    import OCC.Core.BRepTools as breptools
+from OCC.Core.BRep import BRep_Builder
+from OCC.Core.TopoDS import TopoDS_Shape
+from OCC.Display.SimpleGui import init_display
 
+def open_project_dialog(parent):
+    """تحميل مشروع AlumCam بامتداد .alucam"""
     path, _ = QFileDialog.getOpenFileName(
         parent,
         "Open Project",
@@ -105,57 +105,61 @@ def open_project_dialog(parent):
 
     try:
         with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            project_data = json.load(f)
+
+        brep_path = project_data.get("brep_path", "")
+        operations = project_data.get("operations", [])
         print(f"[📂] Project loaded -> {path}")
-    except Exception as e:
-        QMessageBox.warning(parent, "Project", f"⚠️ Failed to load project:\n{e}")
-        return
 
-    brep_path = data.get("brep_path", "")
-    dxf_path = data.get("dxf_path", "")
-    operations = data.get("operations", [])
-    parent.gcode_path = data.get("last_gcode", "")
-    parent.tool_settings = data.get("tool_settings", {})
-
-    # =====================================================
-    # 🧱 إعادة تحميل الشكل في العارض (BREP فقط)
-    # =====================================================
-    try:
-        parent.display.EraseAll()
-        if brep_path and Path(brep_path).exists():
-            shape = TopoDS_Shape()
-            builder = BRep_Builder()
-            breptools.BRepTools_Read(shape, str(brep_path), builder)
-            parent.display.DisplayShape(shape, update=True, color="LIGHTGRAY")
-            parent.display.FitAll()
-            parent.display.Repaint()
-            print(f"[🧩] Shape reloaded successfully: {brep_path}")
-        elif dxf_path and Path(dxf_path).exists():
-            # قراءة DXF بطريقة بديلة آمنة (بدون read_dxf_file)
-            print(f"[📄] DXF file detected -> {dxf_path}")
-            try:
-                from OCC.Core.StlAPI import StlAPI_Reader
-                from OCC.Core.TopExp import TopExp_Explorer
-                from OCC.Core.TopAbs import TopAbs_FACE
-                print("[⚠️] DXF direct load not supported — placeholder only.")
-            except Exception:
-                pass
+        if not brep_path or not os.path.exists(brep_path):
+            print("[⚠️] No valid BREP path in project.")
+            QMessageBox.warning(parent, "Open Project", "⚠️ No valid shape file found in project.")
         else:
-            print("[⚠️] No valid shape path found in project.")
-    except Exception as e:
-        print(f"[❌] Failed to restore shape: {e}")
+            shape = TopoDS_Shape()
+            from OCC.Core.BRep import BRep_Builder
+            from OCC.Core.BRepTools import breptools_Read
+            builder = BRep_Builder()
+            breptools_Read(shape, str(brep_path), builder)
+            if shape.IsNull():
+                raise ValueError("Failed to load BREP shape (null shape)")
 
-    # =====================================================
-    # 🔁 إعادة تحميل العمليات
-    # =====================================================
-    try:
-        if hasattr(parent, "op_browser") and parent.op_browser:
-            if hasattr(parent.op_browser, "load_operations"):
-                parent.op_browser.load_operations(operations)
-                print(f"[⚙️] Restored {len(operations)} operations.")
-    except Exception as e:
-        print(f"[⚠️] Failed to restore operations: {e}")
+            # 🧱 عرض الشكل في العارض Fusion-style
+            if hasattr(parent, "display"):
+                parent.display.EraseAll()
+                from OCC.Core.AIS import AIS_Shape
+                ais_shape = AIS_Shape(shape)
+                parent.display.Context.Display(ais_shape, True)
+                parent.display.FitAll()
+                print(f"[✅] Shape restored and displayed from: {brep_path}")
 
-    QMessageBox.information(parent, "Project", f"✅ Project loaded:\n{path}")
-    print("✅ Project restored successfully.")
+            # 🧩 حفظه في الذاكرة للوصول إليه لاحقًا
+            parent.current_shape = shape
+
+        # 🧠 تحميل العمليات المخزنة (إن وجدت)
+        if operations:
+            if hasattr(parent, "op_browser") and parent.op_browser:
+                if hasattr(parent.op_browser, "load_operations"):
+                    parent.op_browser.load_operations(operations)
+                    print(f"[✅] Operations restored to op_browser.")
+                else:
+                    for op in operations:
+                        try:
+                            op_type = op.get("type", "Unknown")
+                            op_name = op.get("name", "Unnamed")
+                            params = op.get("params", {})  # ← هنا المهم
+                            parent.op_browser.add_operation(op_type, op_name, params)
+                        except Exception as e:
+                            print(f"[⚠️] Failed to reload operation: {e}")
+
+            else:
+                print("[⚠️] No op_browser found in main window.")
+        else:
+            print("[ℹ️] No operations saved in project.")
+
+        QMessageBox.information(parent, "Open Project", f"✅ Project restored successfully.")
+
+    except Exception as e:
+        QMessageBox.critical(parent, "Open Project", f"❌ Failed to open project:\n{e}")
+        print(f"[❌] Failed to open project: {e}")
+
 

@@ -4,6 +4,7 @@ from PyQt5.QtCore import Qt, QSize
 from frontend.style import TOPBAR_STYLE
 
 from PyQt5.QtWidgets import QFileDialog
+from file_ops import open_project_dialog
 
 
 def create_topbar_tabs(parent):
@@ -42,7 +43,7 @@ def create_topbar_tabs(parent):
 
     # ===== Home Tab =====
     home_tools = [
-        ("frontend/icons/open.png", "Open File", lambda: parent.open_project(), False),
+        ("frontend/icons/open.png", "Open File", lambda: open_project_dialog(parent), False),
         ("frontend/icons/new.png", "New File", lambda: parent.new_file(), False),
         ("frontend/icons/save.png", "Save File", lambda: parent.save_project(), False),
         ("frontend/icons/import.png", "Import File", lambda: parent.load_dxf(), False),

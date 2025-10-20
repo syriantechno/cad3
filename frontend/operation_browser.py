@@ -230,6 +230,85 @@ class OperationBrowser(QWidget):
 
     # ---------- توافق مع صفحات أخرى ----------
     def collect_operations(self):
-        """Alias متوافق مع G-Code Workbench"""
-        return self.get_all_ops()
+        """إرجاع جميع العمليات الحالية في شكل قائمة منظمة للحفظ"""
+        ops = []
+        try:
+            print("[DEBUG] 🔍 Dumping operation tree structure...")
+
+            for i in range(self.topLevelItemCount()):
+                profile_item = self.topLevelItem(i)
+                print(f"  [Profile {i}] {profile_item.text(0)} | children={profile_item.childCount()}")
+                for j in range(profile_item.childCount()):
+                    op_item = profile_item.child(j)
+                    data = op_item.data(0, Qt.UserRole)
+                    print(f"     └─[Child {j}] {op_item.text(0)} -> {data}")
+
+            for i in range(self.topLevelItemCount()):
+                profile_item = self.topLevelItem(i)
+                profile_name = profile_item.text(0)
+
+                for j in range(profile_item.childCount()):
+                    op_item = profile_item.child(j)
+                    data = op_item.data(0, Qt.UserRole)
+                    op_type = data.get("type", "Unknown") if isinstance(data, dict) else op_item.text(0)
+
+                    op_info = {
+                        "name": profile_name,
+                        "type": op_type,
+                        "params": {}
+                    }
+
+                    # 🧱 إذا كانت بيانات العملية موجودة في UserRole، نحفظها بالكامل
+                    if isinstance(data, dict):
+                        op_info["params"] = data
+
+                    ops.append(op_info)
+
+            print(f"[🧩] Collected {len(ops)} operations for saving.")
+        except Exception as e:
+            print(f"[⚠️] collect_operations failed: {e}")
+        return ops
+
+    def add_operation(self, op_type, op_name, params=None):
+        """إضافة عملية إلى الشجرة أو استدعاء الدالة المناسبة"""
+        try:
+            op_type_lower = op_type.lower()
+            params = params or {}
+
+            # 🟦 Extrude
+            if "extrude" in op_type_lower and hasattr(self, "add_extrude"):
+                height = params.get("height", 0)
+                axis = params.get("axis", "Y")
+                self.add_extrude(op_name, height, axis)
+                print(f"[🔁] Restored extrude '{op_name}' h={height} axis={axis}")
+
+            # 🕳️ Hole
+            elif "hole" in op_type_lower and hasattr(self, "add_hole"):
+                pos_xyz = params.get("pos", (0, 0, 0))
+                dia = params.get("dia", 0)
+                depth = params.get("depth", 0)
+                axis = params.get("axis", "Z")
+                tool = params.get("tool", "")
+                self.add_hole(op_name, pos_xyz, dia, depth, axis, tool)
+                print(f"[🔁] Restored hole '{op_name}' Ø{dia} ⬇{depth} ({axis}) at {pos_xyz}")
+
+            # 🧩 Pattern / أي نوع آخر
+            elif "pattern" in op_type_lower and hasattr(self, "add_pattern"):
+                count = params.get("count", 2)
+                spacing = params.get("spacing", 30)
+                self.add_pattern(op_name, count, spacing)
+                print(f"[🔁] Restored pattern '{op_name}' x{count} Δ={spacing}")
+
+            else:
+                # fallback: عنصر عام في الشجرة
+                from PyQt5.QtWidgets import QTreeWidgetItem
+                item = QTreeWidgetItem([op_name, op_type])
+                self.addTopLevelItem(item)
+                print(f"[INFO] Added generic operation: {op_name} ({op_type})")
+
+        except Exception as e:
+            print(f"[⚠️] add_operation failed: {e}")
+
+
+
 

@@ -120,6 +120,9 @@ class ExtrudeWindow(QWidget):
         if not result or result.IsNull():
             print("[❌] Extrude failed (null result)")
             return
+        # 🧩 حفظ الشكل الناتج للربط مع النظام الرئيسي (floating_window)
+        self.result_shape = result
+        print("[DEBUG] Stored extrude result in self.result_shape")
 
         # تحديث الشكل في العارض
         self.set_shape(result)

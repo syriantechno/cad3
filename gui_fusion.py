@@ -157,6 +157,13 @@ class AlumCamGUI(QMainWindow):
         self.op_browser.setStyleSheet("background-color: rgba(220, 220, 220, 180);")
         self.op_browser.setFixedWidth(250)
 
+        # 🎨 تطبيق ستايل إضافي من ملف style.py إن وجد
+        try:
+            from frontend.style import OP_BROWSER_STYLE
+            self.op_browser.setStyleSheet(self.op_browser.styleSheet() + OP_BROWSER_STYLE)
+        except Exception:
+            pass
+
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.op_browser)
         splitter.addWidget(self.viewer_widget)
@@ -199,6 +206,21 @@ class AlumCamGUI(QMainWindow):
         self.loaded_shape = None
         self.hole_preview = None
         self.extrude_axis = "Y"
+
+    def on_generate_from_ops(self, ops_list):
+        """
+        تُستدعى من OperationBrowser لما يضغط المستخدم Generate.
+        بإمكانك تمريرها مباشرة لصفحة الجي-كود لو عندك:
+          self.gcode_page.generate_from_ops(ops_list)
+        أو حفظها/طباعتها.
+        """
+        try:
+            if hasattr(self, "gcode_page") and self.gcode_page:
+                self.gcode_page.generate_from_ops(ops_list)
+            else:
+                print("[GCODE] Received ops:", ops_list)
+        except Exception as e:
+            print("[GCODE] handler error:", e)
 
     def _export_gcode(self):
         try:

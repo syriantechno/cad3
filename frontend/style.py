@@ -163,3 +163,89 @@ TOOL_FLOATING_WINDOW_STYLE = """
     QFrame#line { background:#dcdcdc; height:1px; }
 """
 
+HOLE_WINDOW_STYLE = """
+QWidget#HoleWindow {
+    background-color: #F3F3F3;
+    border-radius: 8px;
+}
+
+QComboBox, QDoubleSpinBox {
+    background-color: #FFFFFF;
+    border: 1px solid #C0C0C0;
+    border-radius: 5px;
+    padding: 6px;
+    font-size: 13px;
+    min-height: 24px;
+    min-width: 120px;
+}
+
+QLabel {
+    color: #333;
+    font-size: 13px;
+}
+
+QPushButton#btnPreview {
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    padding: 8px 14px;
+}
+QPushButton#btnPreview:hover {
+    background-color: #1976D2;
+}
+
+QPushButton#btnApply {
+    background-color: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    padding: 8px 14px;
+}
+QPushButton#btnApply:hover {
+    background-color: #388E3C;
+}
+
+QPushButton#btnRefresh {
+    background-color: #e0e0e0;
+    border: 1px solid #bbb;
+    border-radius: 5px;
+    padding: 4px 12px;
+}
+QPushButton#btnRefresh:hover {
+    background-color: #d5d5d5;
+}
+"""
+# أمثلة: تأكد أن btnApply/btnPreview مضافين أصلاً
+# 🌳 تخصيص شجرة العمليات Operation Browser Style
+OP_BROWSER_STYLE = """
+QTreeWidget {
+    background-color: rgba(240, 240, 240, 200);
+    border: none;
+    font-size: 12px;
+    alternate-background-color: rgba(255,255,255,0.5);
+}
+
+QTreeWidget::item {
+    height: 22px;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+QTreeWidget::item:selected {
+    background-color: rgba(100, 170, 255, 80);
+    color: black;
+}
+
+/* ✅ ضمان بقاء الأيقونات مرئية */
+QTreeWidget::item:selected:active {
+    icon: inherit;
+}
+QTreeWidget::item:selected:!active {
+    icon: inherit;
+}
+"""
+
+

@@ -147,13 +147,24 @@ def create_tool_window(parent):
     profile_page = ProfileWindow(dialog, load_dxf=load_dxf_file, qtViewer3d=qtViewer3d)
     profiles_manager_v2_page = create_profile_manager_page_v2(parent, profile_page_getter=lambda: profile_page, stacked_getter=lambda: stacked )
     profiles_manager_page = ProfilesManagerWindow(dialog, load_dxf=load_dxf_file, parent_main=parent)
-    tools_page = ToolsManagerWindow(tool_types, open_add_type_dialog_cb=None)  # لاحقًا تضيف الكول باك
+    tool_types = {
+        "Drill": "frontend/icons/tools/drill.png",
+        "Endmill": "frontend/icons/tools/endmill.png",
+        "V-carve": "frontend/icons/tools/v.png",
+
+    }
+    tools_page = ToolsManagerWindow(tool_types)
+  # لاحقًا تضيف الكول باك
     hole_page = HoleWindow(
         dialog,
         display=parent.display,
         shape_getter=lambda: parent.loaded_shape,
         shape_setter=lambda s: setattr(parent, "loaded_shape", s)
     )
+    # 🧩 استيراد وتطبيق ستايل HoleWindow
+    from frontend.style import HOLE_WINDOW_STYLE
+    hole_page.setStyleSheet(HOLE_WINDOW_STYLE)
+
     box_cut_page = BoxCutWindow(
         dialog,
         display=parent.display,
@@ -391,12 +402,13 @@ def create_tool_window(parent):
                 x, y, z, dia, depth, _, axis = vals
 
                 # نفّذ الحفر في العارض
-                dialog.hole_page.apply_hole()
-
-                # سجّل العملية في الشجرة
-                if hasattr(parent, "op_browser"):
+                result = dialog.hole_page.apply_hole()
+                if result and hasattr(parent, "op_browser"):
                     profile_name = getattr(parent, "active_profile_name", "Unnamed")
-                    parent.op_browser.add_hole(profile_name, (x, y, z), dia, depth, axis)
+                    parent.op_browser.add_hole(profile_name, (x, y, z), dia, depth, axis, tool=result.get("tool"))
+                    print(f"✅ [OPS] Hole added to browser for profile '{profile_name}'")
+                else:
+                    print("⚠️ Hole not added (no result returned or no op_browser).")
 
                 dialog.hide()
                 print("✅ [Apply] Hole executed successfully and added to operation tree.")
@@ -414,6 +426,21 @@ def create_tool_window(parent):
             except Exception as e:
                 QMessageBox.critical(dialog, "Shape Error", str(e))
                 print(f"🔥 [Apply] Shape failed: {e}")
+        # Tools Manager Page
+        elif idx == 3:  # Tools Manager page index
+            try:
+                print("🧰 [Apply] Tool Manager apply_tool() called.")
+                result = dialog.tools_page.apply_tool()
+                if result:
+                    QMessageBox.information(dialog, "Tool Manager", "✅ Tool saved successfully.")
+                    dialog.hide()
+                    print("✅ [Apply] Tool saved via Tool Manager.")
+                else:
+                    print("⚠️ [Apply] Tool save returned False or failed.")
+            except Exception as e:
+                QMessageBox.critical(dialog, "Tool Error", f"Error while saving tool:\n{e}")
+                print(f"🔥 [Apply] Tool Manager failed: {e}")
+
 
         else:
             QMessageBox.information(dialog, "Info", "No apply action for this page yet.")

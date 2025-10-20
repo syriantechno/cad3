@@ -1,140 +1,142 @@
-# frontend/window/gcode_generator_page.py
+# -*- coding: utf-8 -*-
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QTextEdit, QFormLayout, QComboBox, QSpinBox, QScrollArea, QMessageBox
+    QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel,
+    QPushButton, QComboBox, QDoubleSpinBox, QGroupBox, QFormLayout, QMessageBox
 )
-import os
+from PyQt5.QtCore import Qt
+from pathlib import Path
+import os, datetime
 
 class GCodeGeneratorPage(QWidget):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.parent = parent
-        self.setWindowTitle("G-Code Generator")
+    """
+    ✅ صفحة توليد الجي كود المحدثة:
+    - تتلقى العمليات من OperationBrowser مباشرة.
+    - تدعم التوليد اليدوي (Generate) والتوليد التلقائي من الشجرة.
+    - تنسق الجي كود بخط واضح ونتائج محفوظة تلقائياً.
+    """
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._build_ui()
+        self.detected_ops = []  # لتخزين العمليات المستلمة من الشجرة
+
+    # ===================== 🧱 الواجهة =====================
+    def _build_ui(self):
         layout = QVBoxLayout(self)
 
+        title = QLabel("⚙️ G-Code Generator")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("font-weight: 600; font-size: 13pt; padding: 4px;")
+        layout.addWidget(title)
+
         # إعدادات عامة
-        form = QFormLayout()
+        settings_box = QGroupBox("General Settings")
+        settings_layout = QFormLayout()
+
         self.machine_type = QComboBox()
-        self.machine_type.addItems(["CNC Router", "Laser Cutter", "3D Printer"])
+        self.machine_type.addItems(["CNC Router", "CNC Mill", "Laser Cutter"])
+
         self.post_type = QComboBox()
-        self.post_type.addItems(["GRBL", "Mach3", "Fanuc", "Custom"])
-        self.feed_rate = QSpinBox()
-        self.feed_rate.setRange(50, 10000)
-        self.feed_rate.setValue(1200)
-        form.addRow("Machine Type:", self.machine_type)
-        form.addRow("Post Processor:", self.post_type)
-        form.addRow("Feed Rate (mm/min):", self.feed_rate)
-        layout.addLayout(form)
+        self.post_type.addItems(["GRBL", "Fanuc", "Mach3"])
 
-        self.operation_manager = None
-        self.operation_browser = None
-        self.active_profile_id = None
+        self.feed_rate = QDoubleSpinBox()
+        self.feed_rate.setRange(10, 10000)
+        self.feed_rate.setValue(1000)
+        self.feed_rate.setSuffix(" mm/min")
 
+        settings_layout.addRow("Machine:", self.machine_type)
+        settings_layout.addRow("Post:", self.post_type)
+        settings_layout.addRow("Feed rate:", self.feed_rate)
+        settings_box.setLayout(settings_layout)
+        layout.addWidget(settings_box)
 
-        # عرض العمليات الحالية
-        self.operations_view = QTextEdit()
-        self.operations_view.setReadOnly(True)
-        layout.addWidget(QLabel("Detected Operations:"))
-        layout.addWidget(self.operations_view)
-
-        # أزرار التحكم
-        btns = QHBoxLayout()
-        self.btn_scan = QPushButton("🔍 Scan Operations")
-        self.btn_generate = QPushButton("⚙️ Generate All G-Code")
-        self.btn_save = QPushButton("💾 Save to File")
-        btns.addWidget(self.btn_scan)
-        btns.addWidget(self.btn_generate)
-        btns.addWidget(self.btn_save)
-        layout.addLayout(btns)
-
-        # ناتج الجي كود
+        # منطقة النص
         self.output_box = QTextEdit()
-        layout.addWidget(QLabel("Generated G-Code:"))
+        self.output_box.setReadOnly(True)
+        self.output_box.setStyleSheet("background-color: #f8f8f8; font-family: Consolas; font-size: 11pt;")
         layout.addWidget(self.output_box)
 
-        # ربط الإشارات
-        self.btn_scan.clicked.connect(self.scan_operations)
+        # الأزرار
+        btn_row = QHBoxLayout()
+        self.btn_scan = QPushButton("🔍 Scan Operations")
+        self.btn_generate = QPushButton("⚙️ Generate All")
+        self.btn_save = QPushButton("💾 Save G-Code")
+
+        for b in (self.btn_scan, self.btn_generate, self.btn_save):
+            b.setFixedWidth(160)
+
+        btn_row.addWidget(self.btn_scan)
+        btn_row.addWidget(self.btn_generate)
+        btn_row.addWidget(self.btn_save)
+        layout.addLayout(btn_row)
+
+        # روابط الأزرار
+        self.btn_scan.clicked.connect(self._scan_operations)
         self.btn_generate.clicked.connect(self.generate_all)
-        self.btn_save.clicked.connect(self.save_to_file)
+        self.btn_save.clicked.connect(self._save_file)
 
-        self.detected_ops = []
+        self.setLayout(layout)
 
-    def scan_operations(self):
-        """🔍 البحث عن كل العمليات التصنيعية للبروفايل النشط (تجاهل Profile و Extrude)"""
+    # ======================================================
+    # 🔍 قراءة العمليات من OperationBrowser
+    # ======================================================
+    def _scan_operations(self):
+        """تحاول قراءة العمليات من المتصفح المرتبط في النافذة الرئيسية."""
         try:
-            # 🧭 تحديد مصدر العمليات
-            ops_source = None
-            if hasattr(self, "operation_browser") and self.operation_browser is not None:
-                ops_source = self.operation_browser
-            elif hasattr(self.parent, "op_browser"):
-                ops_source = self.parent.op_browser
-            else:
-                self.operations_view.setPlainText("⚠️ لم يتم العثور على Operation Browser متصل.")
-                print("[GCODE] No operation browser available.")
-                return
-
-            # 🧱 جلب العمليات
-            if hasattr(ops_source, "list_operations"):
-                operations = ops_source.list_operations()
-            elif hasattr(ops_source, "get_all_operations"):
-                operations = ops_source.get_all_operations()
-            else:
-                operations = []
-
-            if not operations:
-                self.operations_view.setPlainText("ℹ️ لا توجد عمليات حالياً.")
-                print("[GCODE] No operations found.")
-                return
-
-            # 🧹 تجاهل العمليات غير التصنيعية
-            manufacturing_ops = []
-            for op in operations:
-                op_type = op.get("type", "").lower()
-                if op_type in ("hole", "cut", "slot", "drill"):
-                    manufacturing_ops.append(op)
-
-            if not manufacturing_ops:
-                self.operations_view.setPlainText("ℹ️ لا توجد عمليات تصنيعية (Hole / Cut / Slot).")
-                print("[GCODE] No manufacturing operations found.")
-                return
-
-            # 🧩 عرض العمليات المقبولة فقط
-            self.detected_ops = manufacturing_ops
-            lines = []
-            for op in manufacturing_ops:
-                typ = op.get("type", "Unknown")
-                profile = op.get("profile", "-")
-                x, y, z = op.get("x", 0), op.get("y", 0), op.get("z", 0)
-                depth = op.get("depth", 0)
-                dia = op.get("dia", "-")
-                axis = op.get("axis", "?")
-                lines.append(
-                    f"- {typ} | Profile {profile} | Axis={axis} | Pos=({x},{y},{z}) | Depth={depth} | Dia={dia}")
-
-            self.operations_view.setPlainText("\n".join(lines))
-            print(f"[GCODE] Scanned {len(manufacturing_ops)} manufacturing operations successfully.")
-
+            from PyQt5.QtWidgets import QApplication
+            for w in QApplication.topLevelWidgets():
+                if hasattr(w, "op_browser"):
+                    ops = w.op_browser.get_all_ops()
+                    if not ops:
+                        self.output_box.setPlainText("⚠️ لا توجد عمليات في المتصفح.")
+                        print("[GCODE] No operations found.")
+                        return
+                    self.detected_ops = ops
+                    self.output_box.setPlainText(
+                        f"✅ تم العثور على {len(ops)} عملية.\nاضغط 'Generate All' لتوليد الجي كود."
+                    )
+                    print(f"[GCODE] Detected {len(ops)} operations.")
+                    return
+            self.output_box.setPlainText("⚠️ لا يوجد Operation Browser متصل.")
+            print("[GCODE] No OperationBrowser found.")
         except Exception as e:
+            self.output_box.setPlainText(f"❌ خطأ أثناء البحث عن العمليات:\n{e}")
             print(f"[❌ GCODE] Scan error: {e}")
-            self.operations_view.setPlainText(f"❌ خطأ أثناء قراءة العمليات:\n{e}")
 
-    def generate_all(self):
-        """⚙️ توليد G-Code ذكي لكل عمليات الحفر (Hole) الحالية"""
+    # ======================================================
+    # ⚙️ التوليد من الشجرة مباشرة
+    # ======================================================
+    def generate_from_ops(self, ops_list):
+        """
+        تُستدعى من OperationBrowser (أو من الزر Generate في الشجرة)
+        لتوليد الكود مباشرة من قائمة عمليات.
+        """
         try:
-            if not hasattr(self, "detected_ops") or not self.detected_ops:
-                self.output_box.setPlainText("⚠️ لا توجد عمليات لتوليد G-Code.\nاضغط Scan أولاً.")
-                print("[GCODE] No operations to generate.")
+            if not ops_list:
+                self.output_box.setPlainText("⚠️ لا توجد عمليات لتوليد G-Code.")
+                return
+            self.detected_ops = ops_list
+            self.generate_all()
+        except Exception as e:
+            print(f"[❌ GCODE] generate_from_ops failed: {e}")
+
+    # ======================================================
+    # 🧠 توليد الجي كود العام
+    # ======================================================
+    def generate_all(self):
+        """توليد G-Code ذكي لكل عمليات الحفر."""
+        try:
+            if not self.detected_ops:
+                self.output_box.setPlainText("⚠️ لا توجد عمليات.\nاضغط Scan أولاً.")
                 return
 
-            # ⚙️ إعدادات عامة
-            feed_rate = self.feed_rate.value() if hasattr(self, "feed_rate") else 1000
-            machine = self.machine_type.currentText() if hasattr(self, "machine_type") else "CNC Router"
-            post = self.post_type.currentText() if hasattr(self, "post_type") else "GRBL"
+            feed_rate = self.feed_rate.value()
+            machine = self.machine_type.currentText()
+            post = self.post_type.currentText()
 
-            # 🔧 تجهيز الملف النصي
             lines = [
                 f"(Generated by AlumCam G-Code Generator)",
+                f"(Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})",
                 f"(Machine: {machine})",
                 f"(Post: {post})",
                 "G21  (Units: millimeters)",
@@ -143,67 +145,74 @@ class GCodeGeneratorPage(QWidget):
             ]
 
             profile_id = None
+            total_holes = 0
 
             for op in self.detected_ops:
-                if op.get("type", "").lower() != "hole":
+                t = op.get("type", "").lower()
+                if t != "hole":
                     continue
-
+                total_holes += 1
                 profile_id = op.get("profile", "N/A")
                 x, y, z = float(op.get("x", 0)), float(op.get("y", 0)), float(op.get("z", 0))
                 depth = float(op.get("depth", 0))
                 dia = float(op.get("dia", 0))
                 axis = op.get("axis", "Z").upper()
+                tool = op.get("tool", "Unknown")
 
-                lines.append(f"(--- Hole ---)")
-                lines.append(f"(Profile ID: {profile_id})")
+                lines.append(f"(--- Hole #{total_holes} ---)")
+                lines.append(f"(Profile: {profile_id} | Tool: {tool})")
                 lines.append(f"(Dia={dia:.2f}, Depth={depth:.2f}, Axis={axis})")
 
-                # 🧱 إعداد إحداثيات الحفر
                 if axis == "Z":
                     lines.append(f"G0 X{x:.3f} Y{y:.3f}")
-                    lines.append(f"G81 Z-{depth:.3f} R2.0 F{feed_rate}")
+                    lines.append(f"G81 Z-{depth:.3f} R2.0 F{feed_rate:.0f}")
                 elif axis == "Y":
                     lines.append(f"G0 X{x:.3f} Z{z:.3f}")
-                    lines.append(f"G81 Y-{depth:.3f} R2.0 F{feed_rate}")
-                else:  # X أو محاور مخصصة
+                    lines.append(f"G81 Y-{depth:.3f} R2.0 F{feed_rate:.0f}")
+                else:
                     lines.append(f"G0 Y{y:.3f} Z{z:.3f}")
-                    lines.append(f"G81 X-{depth:.3f} R2.0 F{feed_rate}")
+                    lines.append(f"G81 X-{depth:.3f} R2.0 F{feed_rate:.0f}")
 
-                lines.append("G80 (Cancel drilling cycle)")
+                lines.append("G80")
                 lines.append("")
 
             lines.append("M30 (End of program)")
 
-            # 🧾 إخراج الجي كود للنص داخل الواجهة
             gcode_text = "\n".join(lines)
             self.output_box.setPlainText(gcode_text)
-            print("[GCODE] G-Code generated successfully.")
+            print(f"[GCODE] ✅ Generated successfully ({total_holes} holes).")
 
-            # 💾 حفظ الملف تلقائيًا
-            from pathlib import Path
-            import os
-
+            # حفظ الملف تلقائيًا
             out_dir = Path("output/gcode")
             out_dir.mkdir(parents=True, exist_ok=True)
-            filename = f"profile_{profile_id or 'unknown'}.nc"
-            file_path = out_dir / filename
-
+            file_path = out_dir / f"profile_{profile_id or 'unknown'}.nc"
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(gcode_text)
 
-            print(f"[GCODE] Saved: {file_path}")
             self.output_box.append(f"\n💾 Saved file:\n{file_path}")
+            print(f"[GCODE] Saved: {file_path}")
 
         except Exception as e:
             print(f"[❌ GCODE] Generation error: {e}")
-            self.output_box.setPlainText(f"❌ خطأ أثناء توليد G-Code:\n{e}")
+            self.output_box.setPlainText(f"❌ خطأ أثناء التوليد:\n{e}")
 
-    def save_to_file(self):
-        """حفظ الجي كود إلى ملف"""
-        from PyQt5.QtWidgets import QFileDialog
-        path, _ = QFileDialog.getSaveFileName(self, "Save G-Code", "", "G-Code Files (*.nc *.gcode)")
-        if not path:
-            return
-        with open(path, "w") as f:
-            f.write(self.output_box.toPlainText())
-        print(f"[GCODE] Saved file: {path}")
+    # ======================================================
+    # 💾 الحفظ اليدوي
+    # ======================================================
+    def _save_file(self):
+        """يحفظ محتوى الـ G-Code في مجلد gcode/"""
+        try:
+            text = self.output_box.toPlainText()
+            if not text.strip():
+                QMessageBox.warning(self, "G-Code", "⚠️ لا يوجد محتوى للحفظ.")
+                return
+            out_dir = Path("output/gcode")
+            out_dir.mkdir(parents=True, exist_ok=True)
+            file_path = out_dir / f"manual_{datetime.datetime.now().strftime('%H%M%S')}.nc"
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(text)
+            QMessageBox.information(self, "Saved", f"✅ تم الحفظ في:\n{file_path}")
+            print(f"[GCODE] Saved manually: {file_path}")
+        except Exception as e:
+            QMessageBox.critical(self, "Save Error", str(e))
+            print(f"[❌ GCODE] Save error: {e}")

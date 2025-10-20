@@ -1,229 +1,229 @@
-# ==============================================================
-#  File: operation_browser.py
-#  Purpose: Fusion-style Operation Browser (Profiles → Extrudes → Holes)
-# ==============================================================
+# -*- coding: utf-8 -*-
+from PyQt5.QtWidgets import (
+    QWidget, QVBoxLayout, QLabel, QTreeWidget, QTreeWidgetItem,
+    QHBoxLayout, QPushButton, QMenu, QAction
+)
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QIcon, QColor
 
-from PyQt5.QtWidgets import QTreeWidget, QTreeWidgetItem, QMenu, QAction
-from PyQt5.QtCore import pyqtSignal, Qt
-from PyQt5.QtGui import QFont, QIcon, QColor, QBrush
-from pathlib import Path
+class OperationBrowser(QWidget):
+    """
+    شجرة عمليات احترافية:
+    - كل Profile جذر
+    - تحتوِيه عمليات (Hole / Extrude ...)
+    - تلوين + أيقونات + Tooltip
+    - عدّاد أسفل الشجرة
+    - API متوافقة: add_profile, add_hole
+    """
 
-# ==============================================================
-#  Icons
-# ==============================================================
-ICON_PATH = Path("frontend/icons")
-PROFILE_ICON = QIcon(str(ICON_PATH / "profile.svg"))
-EXTRUDE_ICON = QIcon(str(ICON_PATH / "extrude.svg"))
-HOLE_ICON = QIcon(str(ICON_PATH / "hole.svg"))
-FOLDER_ICON = QIcon(str(ICON_PATH / "folder.svg"))
+    ICONS = {
+        "profile": "frontend/icons/profile.png",
+        "hole": "frontend/icons/hole.png",
+        "extrude": "frontend/icons/extrude.png",
+    }
 
+    def __init__(self, parent=None):
+        super().__init__(parent)
 
-class OperationBrowser(QTreeWidget):
-    """شجرة عمليات CAD منظمة مثل Fusion"""
-    item_selected = pyqtSignal(str, str)
+        self._profiles = {}   # name -> QTreeWidgetItem
+        self._ops_count = 0
+        self._holes_count = 0
 
-    def __init__(self):
-        super().__init__()
-        self.setHeaderLabels(["Operation", "Details"])
-        self.setColumnCount(2)
+        layout = QVBoxLayout(self)
 
-        # 🎨 تنسيق عام
-        self.setIndentation(18)
-        self.setAlternatingRowColors(True)
-        self.setStyleSheet("""
-            QTreeWidget {
-                background-color: #f7f7f7;
-                border: none;
-                font-size: 10.5pt;
-            }
-            QTreeWidget::item {
-                padding: 3px 4px;
-            }
-            QTreeWidget::item:selected {
-                background-color: #0078d4;
-                color: white;
-            }
-        """)
+        # عنوان بسيط
+        title = QLabel("Operation Browser")
+        title.setAlignment(Qt.AlignCenter)
+        title.setStyleSheet("font-weight: 600; padding: 6px;")
+        layout.addWidget(title)
 
-        self.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.customContextMenuRequested.connect(self._show_context_menu)
-        self.itemClicked.connect(self._on_item_clicked)
+        # الشجرة
+        self.tree = QTreeWidget()
+        self.tree.setHeaderLabels(["Operation", "Details"])
+        self.tree.setColumnWidth(0, 180)
+        self.tree.setAlternatingRowColors(True)
+        self.tree.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree.customContextMenuRequested.connect(self._on_context_menu)
+        layout.addWidget(self.tree)
 
-        # الجذر العام
-        self.root_profiles = QTreeWidgetItem(["Profiles"])
-        self.root_profiles.setIcon(0, FOLDER_ICON)
-        self.addTopLevelItem(self.root_profiles)
-        self.root_profiles.setExpanded(True)
+        # شريط سفلي بسيط: توليد الجي كود + عدادات
+        bottom = QHBoxLayout()
+        self.btn_generate = QPushButton("Generate G-Code")
+        self.btn_generate.setObjectName("btnApply")
+        self.btn_generate.clicked.connect(self._emit_generate)
+        bottom.addWidget(self.btn_generate)
 
-        # بيانات داخلية
-        self._operations = []
-        self._profile_items = {}
-        self._extrude_items = {}
+        self.stats = QLabel("⚙️ Total: 0 ops | 0 holes")
+        self.stats.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        bottom.addWidget(self.stats)
+        layout.addLayout(bottom)
 
-        # عنوان غامق
-        bold = QFont()
-        bold.setBold(True)
-        self.root_profiles.setFont(0, bold)
+        self.setLayout(layout)
 
-    # ==========================================================
-    # 📄 إضافة Profile
-    # ==========================================================
-    def add_profile(self, name: str):
-        if not name:
-            name = "Unnamed"
-
-        if name in self._profile_items:
-            print(f"⚠️ [OPS] Profile '{name}' already exists.")
-            return self._profile_items[name]
-
-        prof_item = QTreeWidgetItem([name, "Profile"])
-        prof_item.setIcon(0, PROFILE_ICON)
-        prof_item.setExpanded(True)
-        self.root_profiles.addChild(prof_item)
-
-        self._profile_items[name] = prof_item
-        self._extrude_items[name] = []
-        self._operations.append({"type": "Profile", "name": name})
-
-        print(f"📄 [OPS] Added Profile: {name}")
-        self.expandAll()
-        return prof_item
-
-    # ==========================================================
-    # 🧱 إضافة Extrude
-    # ==========================================================
-    def add_extrude(self, profile_name: str, distance: float, axis: str = "Y"):
+    # ---------- API ----------
+    def add_profile(self, profile_name: str):
         if not profile_name:
-            profile_name = "Unnamed"
-        if profile_name not in self._profile_items:
-            self.add_profile(profile_name)
+            return
+        if profile_name in self._profiles:
+            # موجود مسبقًا
+            return
+        root = QTreeWidgetItem(self.tree, [profile_name, ""])
+        if self.ICONS["profile"]:
+            root.setIcon(0, QIcon(self.ICONS["profile"]))
+        root.setFirstColumnSpanned(False)
+        root.setExpanded(True)
+        self._profiles[profile_name] = root
+        self._update_stats()
 
-        prof_item = self._profile_items[profile_name]
-        count = len(self._extrude_items[profile_name]) + 1
-        label = f"Extrude #{count}"
-        details = f"Axis={axis}, Height={distance:.1f}mm"
+    def add_extrude(self, profile_name: str, height: float, axis: str = "Z"):
+        """عملية عرض فقط (غير مُصدّرة كجي كود حالياً)"""
+        root = self._ensure_profile(profile_name)
+        text = f"Extrude {height:g} along {axis}"
+        node = QTreeWidgetItem(root, ["Extrude", text])
+        if self.ICONS["extrude"]:
+            node.setIcon(0, QIcon(self.ICONS["extrude"]))
+        node.setToolTip(0, text)
+        node.setForeground(0, QColor(80, 80, 80))
+        self._ops_count += 1
+        self._update_stats()
+        root.setExpanded(True)
 
-        extrude_item = QTreeWidgetItem([label, details])
-        extrude_item.setIcon(0, EXTRUDE_ICON)
-        extrude_item.setExpanded(True)
-        prof_item.addChild(extrude_item)
+    def add_hole(self, profile_name: str, pos_xyz, dia, depth, axis, tool: str = None):
+        """
+        متوافق مع النداءات القديمة:
+        add_hole(profile, (x,y,z), dia, depth, axis, tool=?)
+        """
+        root = self._ensure_profile(profile_name)
+        x, y, z = pos_xyz
+        head = f"Hole Ø{float(dia):g} ⬇{float(depth):g} ({axis})"
+        detail = f"@ ({float(x):g},{float(y):g},{float(z):g})"
+        if tool:
+            detail += f" | Tool: {tool}"
 
-        # مجلد عمليات فرعية
-        ops_group = QTreeWidgetItem(["Operations", ""])
-        ops_group.setIcon(0, FOLDER_ICON)
-        ops_group.setExpanded(True)
-        extrude_item.addChild(ops_group)
+        node = QTreeWidgetItem(root, ["Hole", f"{head}  {detail}"])
+        node.setToolTip(0, "Drilling operation")
+        node.setToolTip(1, f"Dia={dia}, Depth={depth}, Axis={axis}, Pos=({x},{y},{z})")
+        if self.ICONS["hole"]:
+            node.setIcon(0, QIcon(self.ICONS["hole"]))
+        node.setForeground(0, QColor(30, 90, 160))  # أزرق لعمليات الحفر
 
-        self._extrude_items[profile_name].append(extrude_item)
-        op_data = {
-            "type": "Extrude",
-            "profile": profile_name,
-            "axis": axis,
-            "distance": distance
-        }
-        extrude_item.setData(0, Qt.UserRole, op_data)
-        self._operations.append(op_data)
-        self.expandAll()
-
-        print(f"🧱 [OPS] Added Extrude for {profile_name}: {distance}mm ({axis})")
-        return extrude_item
-
-    # ==========================================================
-    # 🕳️ إضافة Hole داخل آخر Extrude
-    # ==========================================================
-    def add_hole(self, profile_name: str, position, diameter, depth, axis):
-        if not profile_name:
-            profile_name = "Unnamed"
-
-        if profile_name not in self._profile_items:
-            self.add_profile(profile_name)
-        if not self._extrude_items[profile_name]:
-            self.add_extrude(profile_name, 0.0, axis)
-
-        last_extrude = self._extrude_items[profile_name][-1]
-        ops_group = last_extrude.child(0)
-
-        count = ops_group.childCount() + 1
-        label = f"Hole #{count}"
-        details = f"Ø{diameter:.1f}, Depth={depth:.1f}mm, Axis={axis}"
-
-        hole_item = QTreeWidgetItem([label, details])
-        hole_item.setIcon(0, HOLE_ICON)
-        hole_item.setForeground(0, QBrush(QColor("#0078d4")))
-        ops_group.addChild(hole_item)
-
-        x, y, z = position
-        op_data = {
+        node.setData(0, Qt.UserRole, {
             "type": "Hole",
-            "profile": profile_name,
-            "x": float(x),
-            "y": float(y),
-            "z": float(z),
-            "dia": float(diameter),
-            "depth": float(depth),
-            "axis": str(axis)
-        }
-        hole_item.setData(0, Qt.UserRole, op_data)
-        self._operations.append(op_data)
-        self.expandAll()
-        print(f"🕳 [OPS] Added Hole to {profile_name}: {op_data}")
+            "x": float(x), "y": float(y), "z": float(z),
+            "dia": float(dia), "depth": float(depth),
+            "axis": axis, "tool": tool or ""
+        })
 
-        return hole_item
+        self._ops_count += 1
+        self._holes_count += 1
+        self._update_stats()
+        root.setExpanded(True)
 
-    # ==========================================================
-    # 🎛️ أدوات عامة
-    # ==========================================================
-    def _on_item_clicked(self, item, column):
-        parent = item.parent()
-        category = parent.text(0) if parent else "Root"
-        name = item.text(0)
-        self.item_selected.emit(category, name)
+    def get_all_ops(self):
+        """إرجاع قائمة بكل العمليات بشكل قاموسات مرتبة حسب البروفايل."""
+        results = []
+        for profile, root in self._profiles.items():
+            count = root.childCount()
+            for i in range(count):
+                child = root.child(i)
+                meta = child.data(0, Qt.UserRole)
+                if meta:
+                    rec = dict(meta)
+                    rec["profile"] = profile
+                    results.append(rec)
+        return results
 
-    def _show_context_menu(self, position):
-        item = self.itemAt(position)
+    # ---------- داخلي ----------
+    def _ensure_profile(self, profile_name):
+        if not profile_name:
+            profile_name = "Unnamed"
+        if profile_name not in self._profiles:
+            self.add_profile(profile_name)
+        return self._profiles[profile_name]
+
+    def _update_stats(self):
+        self.stats.setText(f"⚙️ Total: {self._ops_count} ops | {self._holes_count} holes")
+
+    # ---------- Context Menu ----------
+    def _on_context_menu(self, pos):
+        item = self.tree.itemAt(pos)
         if not item:
             return
-        menu = QMenu()
-        delete_action = QAction("Delete", self)
-        rename_action = QAction("Rename", self)
-        delete_action.triggered.connect(lambda: self._delete_item(item))
-        rename_action.triggered.connect(lambda: self._rename_item(item))
-        menu.addAction(delete_action)
-        menu.addAction(rename_action)
-        menu.exec_(self.viewport().mapToGlobal(position))
+        menu = QMenu(self)
+        if item.parent() is None:
+            # عنصر بروفايل
+            act_gen = QAction("Generate G-Code for this profile", self)
+            act_gen.triggered.connect(lambda: self._emit_generate(item))
+            menu.addAction(act_gen)
+        else:
+            # عنصر عملية
+            op_meta = item.data(0, Qt.UserRole) or {}
+            act_show = QAction("Show details", self)
+            act_show.triggered.connect(lambda: self._show_msg(op_meta))
+            menu.addAction(act_show)
 
-    def _delete_item(self, item):
+            menu.addSeparator()
+            act_del = QAction("Delete", self)
+            act_del.triggered.connect(lambda: self._delete_item(item))
+            menu.addAction(act_del)
+
+        menu.exec_(self.tree.viewport().mapToGlobal(pos))
+
+    def _delete_item(self, item: QTreeWidgetItem):
         parent = item.parent()
-        if parent:
-            op_data = item.data(0, Qt.UserRole)
-            if op_data in self._operations:
-                self._operations.remove(op_data)
-            parent.removeChild(item)
-            print(f"🗑 [OPS] Deleted: {op_data}")
+        if parent is None:
+            # حذف بروفايل بالكامل
+            name = item.text(0)
+            self._tree_remove(item)
+            self._profiles.pop(name, None)
+        else:
+            meta = item.data(0, Qt.UserRole) or {}
+            if meta.get("type") == "Hole":
+                self._holes_count = max(0, self._holes_count - 1)
+            self._ops_count = max(0, self._ops_count - 1)
+            self._tree_remove(item)
+        self._update_stats()
 
-    def _rename_item(self, item):
-        self.editItem(item, 0)
+    def _tree_remove(self, item: QTreeWidgetItem):
+        if item.parent():
+            item.parent().removeChild(item)
+        else:
+            idx = self.tree.indexOfTopLevelItem(item)
+            self.tree.takeTopLevelItem(idx)
 
-    # ==========================================================
-    # 🔧 API خارجي
-    # ==========================================================
-    def list_operations(self):
-        return list(self._operations)
+    def _show_msg(self, meta: dict):
+        from PyQt5.QtWidgets import QMessageBox
+        if not meta:
+            QMessageBox.information(self, "Operation", "No metadata.")
+            return
+        txt = "\n".join([f"{k}: {v}" for k, v in meta.items()])
+        QMessageBox.information(self, "Operation", txt)
 
-    def clear_all(self):
-        self.root_profiles.takeChildren()
-        self._operations.clear()
-        self._profile_items.clear()
-        self._extrude_items.clear()
-        print("🧹 [OPS] Cleared all operations.")
-
-    def get_all_operations(self):
-        """إرجاع قائمة بكل العمليات الحالية المضافة في الشجرة"""
+    # ---------- إشارات توليد الجي كود ----------
+    def _emit_generate(self, root_item=None):
+        """
+        ينادي signal غير مباشر عبر خاصية ديناميكية على الـparent:
+        - إذا توفّر self.parent().on_generate_from_ops، يتم تمرير قائمة العمليات
+        - وإلا، فقط يطبع للكونسول
+        """
         ops = []
-        for i in range(self.tree.topLevelItemCount()):
-            item = self.tree.topLevelItem(i)
-            data = item.data(0, Qt.UserRole)
-            if data:
-                ops.append(data)
-        return ops
+        if root_item and root_item.parent() is None:
+            # توليد بروفايل واحد
+            profile = root_item.text(0)
+            count = root_item.childCount()
+            for i in range(count):
+                child = root_item.child(i)
+                meta = child.data(0, Qt.UserRole)
+                if meta:
+                    rec = dict(meta)
+                    rec["profile"] = profile
+                    ops.append(rec)
+        else:
+            # كل العمليات
+            ops = self.get_all_ops()
 
+        handler = getattr(self.parent(), "on_generate_from_ops", None)
+        if callable(handler):
+            handler(ops)
+        else:
+            print("[GCODE] Emit ops:", ops)

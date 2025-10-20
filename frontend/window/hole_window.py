@@ -1,23 +1,35 @@
-# frontend/window/hole_window.py — FINAL (Z Fixed + Correct Order)
-
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QFormLayout, QLineEdit, QComboBox, QPushButton, QHBoxLayout
-from PyQt5.QtCore import Qt
-
+from PyQt5.QtWidgets import (
+    QWidget, QVBoxLayout, QFormLayout, QLineEdit, QComboBox,
+    QPushButton, QHBoxLayout, QSpacerItem, QSizePolicy, QLabel,
+    QMessageBox, QFrame, QApplication
+)
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtCore import Qt, QTimer
 from OCC.Core.AIS import AIS_Shape
+    # Quantity_Color for coloring preview/flash shapes
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
+# === مشروعك: لا تغييرات على الاستيرادات الموجودة لديك ===
 from tools.geometry_ops import add_hole, preview_hole
 from tools.color_utils import display_with_fusion_style
-from tools.dimensions import (
-    measure_shape,
-    hole_reference_dimensions,
-    hole_size_dimensions
-)
+from tools.dimensions import measure_shape, hole_reference_dimensions, hole_size_dimensions
+from frontend.window.tools_db import ToolsDB
+
+import os, json
+from pathlib import Path
 
 ENABLE_PREVIEW_DIMS = True
+PREFS_PATH = Path("data/hole_prefs.json")
+IMAGES_DIR = Path("tools/images")
 
 
 class HoleWindow(QWidget):
+    """
+    نسخة نهائية:
+    - لا تغيير على التواقيع العامة للدوال.
+    - إضافة العملية إلى Operation Browser تتم داخليًا إذا عُثر على op_browser.
+    - إصلاح معاينة الأبعاد لتتجنب unpack من None.
+    """
     def __init__(self, parent=None, display=None, shape_getter=None, shape_setter=None):
         super().__init__(parent)
         self.display = display
@@ -26,25 +38,53 @@ class HoleWindow(QWidget):
 
         self._hole_preview_ais = None
         self._preview_dim_shapes = []
+        self._last_tool_id = None
 
         self._build_ui()
         self._connect_live_preview()
+        self._restore_last_tool()
 
+    # ==============================
+    # 🧱 بناء الواجهة
+    # ==============================
     def _build_ui(self):
         layout = QVBoxLayout(self)
         form = QFormLayout()
 
-        # 📝 مدخلات الحفر
-        self.x_input = QLineEdit("0")
-        self.y_input = QLineEdit("0")
-        self.z_input = QLineEdit("0")  # Z رجعناها للتحكم في النزول
+        # 🧰 اختيار الأداة + زر تحديث
+        top_tools_layout = QHBoxLayout()
+        self.tool_combo = QComboBox()
+        self.tool_combo.setToolTip("اختر أداة الحفر من المكتبة")
+        btn_refresh = QPushButton("↻ Refresh")
+        btn_refresh.setToolTip("تحديث قائمة الأدوات من المكتبة")
+        btn_refresh.clicked.connect(self._load_tools)
+        top_tools_layout.addWidget(self.tool_combo)
+        top_tools_layout.addWidget(btn_refresh)
+        form.addRow("Tool:", top_tools_layout)
 
-        self.dia_input = QLineEdit("6")
-        self.depth_input = QLineEdit("20")       # عمق الحفر الحقيقي
-        self.preview_len_input = QLineEdit("50") # طول الاسطوانة للمعاينة
+        # 🖼️ صورة الأداة
+        self.tool_image = QLabel("(No Image)")
+        self.tool_image.setAlignment(Qt.AlignCenter)
+        self.tool_image.setStyleSheet("""
+            QLabel {
+                background-color: #f8f8f8;
+                border: 1px solid #d0d0d0;
+                border-radius: 6px;
+                padding: 6px;
+                min-height: 120px;
+            }
+        """)
+        form.addRow("Tool Preview:", self.tool_image)
 
-        self.axis_combo = QComboBox()
-        self.axis_combo.addItems(["Z", "Y", "X"])
+        # 🧩 مدخلات الحفر
+        self.x_input = QLineEdit("0");   self.x_input.setToolTip("إحداثي X لمركز الثقب")
+        self.y_input = QLineEdit("0");   self.y_input.setToolTip("إحداثي Y لمركز الثقب")
+        self.z_input = QLineEdit("0");   self.z_input.setToolTip("إحداثي Z لمركز الثقب")
+        self.dia_input = QLineEdit("6"); self.dia_input.setToolTip("قطر الثقب بالمليمتر")
+        self.depth_input = QLineEdit("20"); self.depth_input.setToolTip("عمق الثقب بالمليمتر")
+        self.preview_len_input = QLineEdit("50"); self.preview_len_input.setToolTip("طول خط المعاينة")
+        self.axis_combo = QComboBox(); self.axis_combo.addItems(["Z", "Y", "X"])
+        self.axis_combo.setToolTip("محور اتجاه الحفر")
 
         form.addRow("X:", self.x_input)
         form.addRow("Y:", self.y_input)
@@ -56,44 +96,135 @@ class HoleWindow(QWidget):
 
         layout.addLayout(form)
 
-        # 🧱 أزرار المعاينة والتطبيق
-        btn_layout = QHBoxLayout()
-        preview_btn = QPushButton("👁 Preview Hole")
+        # 🎨 فاصل
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFrameShadow(QFrame.Sunken)
+        separator.setStyleSheet("color: #c0c0c0; margin: 8px 0;")
+        layout.addWidget(separator)
 
-        preview_btn.clicked.connect(self._update_preview)
+        # 📋 ملخص الأداة
+        self.tool_summary = QLabel("🧰 Tool Summary: None selected")
+        self.tool_summary.setAlignment(Qt.AlignCenter)
+        self.tool_summary.setStyleSheet("""
+            QLabel {
+                color: #333;
+                background-color: #f0f0f0;
+                border-radius: 6px;
+                padding: 6px;
+                font-size: 11pt;
+            }
+        """)
+        layout.addWidget(self.tool_summary)
 
-        btn_layout.addWidget(preview_btn)
+        # 🎛️ أزرار بالمنتصف
+        btns_row = QHBoxLayout(); btns_row.setAlignment(Qt.AlignCenter)
+        self.preview_btn = QPushButton("Preview Hole")
+        self.apply_btn = QPushButton("Apply Hole")
+        self.center_btn = QPushButton("Center View")
+        self.preview_btn.setObjectName("btnPreview")
+        self.apply_btn.setObjectName("btnApply")
+        self.preview_btn.setFixedWidth(150)
+        self.apply_btn.setFixedWidth(150)
+        self.center_btn.setFixedWidth(130)
+        self.center_btn.setToolTip("تركيز العرض على المشهد (Fit All)")
 
-        layout.addLayout(btn_layout)
+        btns_row.addItem(QSpacerItem(20, 10, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        btns_row.addWidget(self.preview_btn); btns_row.addSpacing(12)
+        btns_row.addWidget(self.apply_btn);   btns_row.addSpacing(12)
+        btns_row.addWidget(self.center_btn)
+        btns_row.addItem(QSpacerItem(20, 10, QSizePolicy.Expanding, QSizePolicy.Minimum))
 
+        layout.addSpacing(10)
+        layout.addLayout(btns_row)
+        self.setLayout(layout)
+
+        # 🔗 ربط الأحداث
+        self.preview_btn.clicked.connect(self._update_preview)
+        self.apply_btn.clicked.connect(self.apply_hole)
+        self.center_btn.clicked.connect(self._center_view)
+        self.tool_combo.currentIndexChanged.connect(self._on_tool_changed)
+
+        # ✅ تحميل الأدوات بعد تجهيز الواجهة
+        self._load_tools()
+
+    # ===================================================
+    # 🔄 الأدوات
+    # ===================================================
+    def _load_tools(self):
+        try:
+            db = ToolsDB()
+            tools = db.list_tools()
+            self.tool_combo.blockSignals(True)
+            self.tool_combo.clear()
+            if not tools:
+                self.tool_combo.addItem("— No Tools —", None)
+                self.tool_combo.blockSignals(False)
+                self._update_tool_summary(None)
+                self._update_tool_image(None)
+                return
+
+            found_last = False
+            for t in tools:
+                label = f"{t['name']} ({t['type']} ⌀{t['diameter']}mm)"
+                self.tool_combo.addItem(label, t)
+                if self._last_tool_id and t.get("id") == self._last_tool_id:
+                    self.tool_combo.setCurrentIndex(self.tool_combo.count() - 1)
+                    found_last = True
+
+            if not found_last:
+                self.tool_combo.setCurrentIndex(0)
+
+            self._on_tool_changed()
+            self.tool_combo.blockSignals(False)
+            print(f"[TOOLS] ✅ Loaded {len(tools)} tools into HoleWindow.")
+        except Exception as e:
+            print(f"[❌ TOOLS] Load failed: {e}")
+            self.tool_combo.addItem("Error loading tools", None)
+
+    def _on_tool_changed(self):
+        tool = self.tool_combo.currentData()
+        if tool and "diameter" in tool:
+            self.dia_input.setText(str(tool["diameter"]))
+        self._update_tool_image(tool)
+        self._update_tool_summary(tool)
+        self._save_last_tool(tool)
+
+    def _update_tool_summary(self, tool):
+        if not tool:
+            self.tool_summary.setText("🧰 Tool Summary: None selected")
+            return
+        feed = tool.get("feedrate", "—")
+        rpm = tool.get("rpm", "—")
+        length = tool.get("length", "—")
+        self.tool_summary.setText(
+            f"🧰 Tool: {tool['name']} | Type: {tool['type']} | Ø {tool['diameter']}mm | "
+            f"Length: {length} | RPM: {rpm} | Feed: {feed}"
+        )
+
+    def _update_tool_image(self, tool):
+        if not tool:
+            self.tool_image.setPixmap(QPixmap()); self.tool_image.setText("(No Image)")
+            return
+        img_path = IMAGES_DIR / f"{tool['name']}.png"
+        if img_path.exists():
+            pix = QPixmap(str(img_path))
+            self.tool_image.setPixmap(pix.scaled(150, 150, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        else:
+            self.tool_image.setPixmap(QPixmap()); self.tool_image.setText("(No Image)")
+
+    # ===================================================
+    # ⚙️ المعاينة والتنفيذ
+    # ===================================================
     def _connect_live_preview(self):
-        for w in (self.x_input, self.y_input, self.z_input, self.dia_input, self.depth_input, self.preview_len_input):
+        for w in (
+            self.x_input, self.y_input, self.z_input,
+            self.dia_input, self.depth_input, self.preview_len_input
+        ):
             w.textChanged.connect(self._update_preview)
         self.axis_combo.currentIndexChanged.connect(self._update_preview)
 
-    def _clear_hole_preview(self):
-        if self._hole_preview_ais is not None:
-            try:
-                self.display.Context.Erase(self._hole_preview_ais, False)
-            except Exception:
-                pass
-            self._hole_preview_ais = None
-
-    def _clear_preview_dimensions(self):
-        if self._preview_dim_shapes:
-            for dim in self._preview_dim_shapes:
-                if dim is not None:
-                    try:
-                        self.display.Context.Erase(dim, False)
-                    except Exception:
-                        pass
-            self._preview_dim_shapes.clear()
-
     def _get_values(self):
-        """
-        إرجاع القيم بترتيب واضح:
-        x, y, z, dia, depth, preview_len, axis
-        """
         try:
             x = float(self.x_input.text())
             y = float(self.y_input.text())
@@ -102,32 +233,70 @@ class HoleWindow(QWidget):
             depth = float(self.depth_input.text())
             preview_len = float(self.preview_len_input.text())
             axis = self.axis_combo.currentText()
-            return x, y, z, dia, depth, preview_len, axis
+            tool = self.tool_combo.currentData()
+            return x, y, z, dia, depth, preview_len, axis, tool
         except ValueError:
             return None
+
+    def _safe_dims_preview(self, base_shape, x, y, z, dia, axis, depth):
+        """
+        يعالج نتائج الدوال البعدية حتى لو رجعت None أو عنصر واحد،
+        لتجنب خطأ unpack.
+        """
+        elems = []
+
+        try:
+            ref_dims = hole_reference_dimensions(
+                self.display, x, y, z, base_shape, offset_above=10, preview=True
+            )
+            if isinstance(ref_dims, (list, tuple)):
+                elems += list(ref_dims)
+            elif ref_dims is not None:
+                elems.append(ref_dims)
+        except Exception as e:
+            print(f"[dims] reference failed: {e}")
+
+        try:
+            size_dims = hole_size_dimensions(
+                self.display, x, y, z, dia, axis, depth, base_shape, offset_above=10, preview=True
+            )
+            if isinstance(size_dims, (list, tuple)):
+                elems += list(size_dims)
+            elif size_dims is not None:
+                elems.append(size_dims)
+        except Exception as e:
+            print(f"[dims] size failed: {e}")
+
+        self._preview_dim_shapes = [e for e in elems if e]
 
     def _update_preview(self):
         vals = self._get_values()
         if not vals:
             return
-        x, y, z, dia, depth, preview_len, axis = vals
+        x, y, z, dia, depth, preview_len, axis, tool = vals
 
         base_shape = self.get_shape()
         if not base_shape or base_shape.IsNull():
+            print("[PREVIEW] ⚠️ No valid base shape for preview.")
             return
 
-        self._clear_hole_preview()
-        self._clear_preview_dimensions()
+        # امسح المعاينة السابقة
+        try:
+            if self._hole_preview_ais:
+                self.display.Context.Erase(self._hole_preview_ais, False)
+        except Exception:
+            pass
+        self._hole_preview_ais = None
+        self._preview_dim_shapes.clear()
 
-        print(f"[PREVIEW] x={x}, y={y}, z={z}, axis={axis}, depth={depth}")
-
+        # أنشئ معاينة
         hole_shape = preview_hole(base_shape, x, y, z, dia, axis, preview_len)
         if not hole_shape or hole_shape.IsNull():
             print("[⚠] Hole preview shape is null — skip")
             return
 
         ais = AIS_Shape(hole_shape)
-        ais.SetColor(Quantity_Color(1.0, 0.0, 0.0, Quantity_TOC_RGB))  # أحمر
+        ais.SetColor(Quantity_Color(1.0, 0.0, 0.0, Quantity_TOC_RGB))
         try:
             ais.SetTransparency(0.5)
         except Exception:
@@ -136,72 +305,120 @@ class HoleWindow(QWidget):
         self._hole_preview_ais = ais
 
         if ENABLE_PREVIEW_DIMS:
-            try:
-                elems = []
-                line1, txt1 = hole_reference_dimensions(self.display, x, y, z, base_shape, offset_above=10, preview=True)
-                elems += [line1, txt1]
-                elems += list(hole_size_dimensions(self.display, x, y, z, dia, axis, depth, base_shape, offset_above=10, preview=True))
-                self._preview_dim_shapes.extend([e for e in elems if e is not None])
-            except Exception as e:
-                print(f"[⚠] Preview dims failed: {e}")
+            self._safe_dims_preview(base_shape, x, y, z, dia, axis, depth)
 
         self.display.Context.UpdateCurrentViewer()
 
     def apply_hole(self):
         vals = self._get_values()
         if not vals:
-            return
-        x, y, z, dia, depth, _, axis = vals
+            QMessageBox.warning(self, "Hole", "⚠️ قيم غير صالحة.")
+            return None
 
-        print(f"[APPLY] x={x}, y={y}, z={z}, axis={axis}, depth={depth}")
-
+        x, y, z, dia, depth, _, axis, tool = vals
         base_shape = self.get_shape()
         if not base_shape or base_shape.IsNull():
-            print("⚠️ No shape to drill")
-            return
-
-        self._clear_hole_preview()
-        self._clear_preview_dimensions()
+            QMessageBox.warning(self, "Hole", "⚠️ لا يوجد شكل صالح للحفر.")
+            return None
 
         try:
+            # إنشاء الثقب
             result = add_hole(base_shape, x, y, z, dia, axis, depth=depth)
-        except Exception as e:
-            print(f"[❌] add_hole failed: {e}")
-            return
+            if not result or result.IsNull():
+                print("[❌] add_hole returned null result.")
+                return None
 
-        if not result or result.IsNull():
-            print("⚠️ Hole result is null")
-            return
+            # تنظيف المعاينة القديمة
+            try:
+                if self._hole_preview_ais:
+                    self.display.Context.Erase(self._hole_preview_ais, False)
+                    self._hole_preview_ais = None
+            except Exception:
+                pass
+            self._preview_dim_shapes.clear()
 
-        self.set_shape(result)
-        display_with_fusion_style(result, self.display)
+            # تحديث الشكل في العارض
+            self.set_shape(result)
+            display_with_fusion_style(result, self.display)
+            measure_shape(self.display, result)
+            hole_reference_dimensions(self.display, x, y, z, result, offset_above=10)
+            hole_size_dimensions(self.display, x, y, z, dia, axis, depth, result, offset_above=10)
+            self.display.Context.UpdateCurrentViewer()
+            self.display.Repaint()
 
-        measure_shape(self.display, result)
-        hole_reference_dimensions(self.display, x, y, z, result, offset_above=10, preview=False)
-        hole_size_dimensions(self.display, x, y, z, dia, axis, depth, result, offset_above=10, preview=False)
+            # وميض سريع بعد التنفيذ
+            try:
+                blink_shape = preview_hole(result, x, y, z, dia, axis, 8.0)
+                if blink_shape and not blink_shape.IsNull():
+                    blink_ais = AIS_Shape(blink_shape)
+                    blink_ais.SetColor(Quantity_Color(0.0, 0.8, 0.0, Quantity_TOC_RGB))
+                    blink_ais.SetTransparency(0.2)
+                    self.display.Context.Display(blink_ais, False)
+                    QTimer.singleShot(400, lambda: self.display.Context.Erase(blink_ais, False))
+            except Exception:
+                pass
 
-        self.display.Context.UpdateCurrentViewer()
-        self.display.Repaint()
-        print(f"🧱 Hole applied: axis={axis}, dia={dia}, depth={depth}, at ({x},{y},{z})")
-        # 🧩 تسجيل العملية في Operation Browser (لـ G-Code)
-        try:
-            op_data = {
+            # معلومات الأداة المستخدمة
+            if tool:
+                print(f"🪛 Tool used: {tool['name']} | ⌀{tool['diameter']}mm | Feed={tool.get('feedrate','—')}")
+
+            print(f"🧱 Hole applied: axis={axis}, dia={dia}, depth={depth}, at ({x},{y},{z})")
+
+            # ⛓️ أضف العملية إلى Operation Browser إن وُجد
+            try:
+                for w in QApplication.topLevelWidgets():
+                    # نبحث عن نافذة فيها op_browser واسم بروفايل
+                    if hasattr(w, "op_browser"):
+                        profile_name = getattr(w, "active_profile_name", "Unnamed")
+                        try:
+                            # بعض الإصدارات تستخدم add_hole(profile, (x,y,z), dia, depth, axis, tool=?)
+                            w.op_browser.add_hole(profile_name, (x, y, z), dia, depth, axis,
+                                                  tool=(tool["name"] if tool else None))
+                            print(f"🕳 [OPS] Added Hole to {profile_name}: "
+                                  f"{{'type':'Hole','x':{x},'y':{y},'z':{z},'dia':{dia},'depth':{depth},'axis':'{axis}'}}")
+                        except TypeError:
+                            # دعم النسخ الأقدم التي لا تقبل tool=...
+                            w.op_browser.add_hole(profile_name, (x, y, z), dia, depth, axis)
+                            print(f"🕳 [OPS] Added Hole to {profile_name} (legacy signature).")
+                        break
+            except Exception as e:
+                print(f"[OPS] add to browser failed: {e}")
+
+            # 💾 أعد بيانات العملية كذلك
+            return {
                 "type": "Hole",
-                "x": x,
-                "y": y,
-                "z": z,
-                "depth": depth,
-                "dia": dia,
+                "x": x, "y": y, "z": z,
+                "dia": dia, "depth": depth,
                 "axis": axis,
-                "feed": 1200,  # قيمة افتراضية، لاحقاً يمكن أخذها من إعدادات G-Code
+                "tool": tool["name"] if tool else "Unknown"
             }
 
-            # الوصول إلى المتصفح عبر الـparent الرئيسي
-            main_window = getattr(self.parent(), "main_window", None)
-            if main_window and hasattr(main_window, "operation_browser"):
-                main_window.operation_browser.add_operation(op_data)
-                print(f"[📋] Hole operation added to Operation Browser.")
-            else:
-                print("⚠️ Operation Browser not available.")
         except Exception as e:
-            print(f"[❌] Failed to register Hole operation: {e}")
+            print(f"[❌ APPLY] Hole failed: {e}")
+            return None
+
+    def _center_view(self):
+        try:
+            if hasattr(self.display, "FitAll"):
+                self.display.FitAll()
+            elif hasattr(self.display, "Repaint"):
+                self.display.Repaint()
+        except Exception as e:
+            print(f"[view] center failed: {e}")
+
+    # ==============================
+    # 💾 تذكّر آخر أداة
+    # ==============================
+    def _save_last_tool(self, tool):
+        try:
+            PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
+            json.dump({"last_tool_id": tool.get("id") if tool else None}, open(PREFS_PATH, "w"))
+        except Exception:
+            pass
+
+    def _restore_last_tool(self):
+        try:
+            if PREFS_PATH.exists():
+                self._last_tool_id = json.load(open(PREFS_PATH, "r")).get("last_tool_id")
+        except Exception:
+            pass

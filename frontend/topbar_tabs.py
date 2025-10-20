@@ -42,9 +42,9 @@ def create_topbar_tabs(parent):
 
     # ===== Home Tab =====
     home_tools = [
-        ("frontend/icons/open.png", "Open File", lambda: parent.open_file(), False),
+        ("frontend/icons/open.png", "Open File", lambda: parent.open_project(), False),
         ("frontend/icons/new.png", "New File", lambda: parent.new_file(), False),
-        ("frontend/icons/save.png", "Save File", lambda: parent.save_file(), False),
+        ("frontend/icons/save.png", "Save File", lambda: parent.save_project(), False),
         ("frontend/icons/import.png", "Import File", lambda: parent.load_dxf(), False),
         ("frontend/icons/export.png", "Export File", lambda: parent.export_stl_dialog(), False)
 

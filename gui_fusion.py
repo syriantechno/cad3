@@ -17,7 +17,7 @@ logging.basicConfig(level=logging.DEBUG)
 from frontend.window.floating_window import create_tool_window
 
 
-from file_ops import ( load_project, save_file)
+
 # OCC viewer
 try:
     from OCC.Display.qtDisplay import qtViewer3d
@@ -207,6 +207,12 @@ class AlumCamGUI(QMainWindow):
         self.hole_preview = None
         self.extrude_axis = "Y"
 
+        import inspect
+
+        for name, val in inspect.getmembers(self):
+            if isinstance(val, str) and (".brep" in val.lower() or ".dxf" in val.lower()):
+                print("[DEBUG SHAPE PATH]", name, "=", val)
+
     def on_generate_from_ops(self, ops_list):
         """
         تُستدعى من OperationBrowser لما يضغط المستخدم Generate.
@@ -327,20 +333,15 @@ class AlumCamGUI(QMainWindow):
 
         # دوال تغليف تستخدمها الأزرار في التوب بار:
 
-    def save_file(self):
-        from file_ops import save_file_dialog
-        save_file_dialog(self)
-
-    def open_file(self):
-        from file_ops import open_file_dialog
-        open_file_dialog(self)
 
 
-    def save_project(self, shape, path, metadata):
-        return save_file(shape, path, metadata)
+    def save_project(self):
+        from file_ops import save_project_dialog
+        save_project_dialog(self)
 
-    def load_project(self, path):
-        return load_project(path)
+    def open_project(self):
+        from file_ops import open_project_dialog
+        open_project_dialog(self)
 
     def new_file(self):
         self.loaded_shape = None

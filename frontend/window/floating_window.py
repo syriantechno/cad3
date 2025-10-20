@@ -313,7 +313,19 @@ def create_tool_window(parent):
                     parent.op_browser.add_extrude(profile_name, distance_val, axis="Y")
 
                 dialog.hide()
+
                 print(f"✅ [Apply] Extrude completed successfully for profile '{profile_name}', height={distance_val}")
+                # 🧱 حفظ الشكل الناتج في النافذة الرئيسية للوصول إليه لاحقًا
+                # 🧱 حفظ الشكل الناتج من صفحة الإكسترود للوصول إليه لاحقًا
+                if hasattr(dialog.extrude_page, "result_shape"):
+                    parent.current_shape = dialog.extrude_page.result_shape
+                    print("[DEBUG] Saved shape reference from extrude_page.result_shape")
+                elif hasattr(dialog.extrude_page, "preview_shape"):
+                    parent.current_shape = dialog.extrude_page.preview_shape
+                    print("[DEBUG] Saved shape reference from extrude_page.preview_shape")
+                else:
+                    print("[⚠️] No shape attribute found in extrude_page")
+
 
             except Exception as e:
                 QMessageBox.critical(dialog, "Extrude Error", str(e))

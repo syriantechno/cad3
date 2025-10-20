@@ -230,39 +230,47 @@ class OperationBrowser(QWidget):
 
     # ---------- توافق مع صفحات أخرى ----------
     def collect_operations(self):
-        """إرجاع جميع العمليات الحالية في شكل قائمة منظمة للحفظ"""
+        """إرجاع جميع العمليات الحالية داخل QTreeWidget للحفظ في المشروع"""
         ops = []
         try:
-            print("[DEBUG] 🔍 Dumping operation tree structure...")
+            print("[DEBUG] 🔍 Dumping operation tree structure (final version)...")
 
-            for i in range(self.topLevelItemCount()):
-                profile_item = self.topLevelItem(i)
-                print(f"  [Profile {i}] {profile_item.text(0)} | children={profile_item.childCount()}")
-                for j in range(profile_item.childCount()):
-                    op_item = profile_item.child(j)
-                    data = op_item.data(0, Qt.UserRole)
-                    print(f"     └─[Child {j}] {op_item.text(0)} -> {data}")
+            tree = getattr(self, "tree", None)
+            if not tree:
+                print("[⚠️] No QTreeWidget found in OperationBrowser.")
+                return ops
 
-            for i in range(self.topLevelItemCount()):
-                profile_item = self.topLevelItem(i)
-                profile_name = profile_item.text(0)
+            for i in range(tree.topLevelItemCount()):
+                item = tree.topLevelItem(i)
+                data = item.data(0, Qt.UserRole)
+                name = item.text(0)
+                children_count = item.childCount()
 
-                for j in range(profile_item.childCount()):
-                    op_item = profile_item.child(j)
-                    data = op_item.data(0, Qt.UserRole)
-                    op_type = data.get("type", "Unknown") if isinstance(data, dict) else op_item.text(0)
+                # 🔹 حالة وجود children (بروفايل يحتوي عمليات)
+                if children_count > 0:
+                    print(f"  [Profile {i}] {name} | children={children_count}")
+                    for j in range(children_count):
+                        child = item.child(j)
+                        cdata = child.data(0, Qt.UserRole)
+                        ctype = cdata.get("type", "Unknown") if isinstance(cdata, dict) else child.text(0)
+                        op_info = {
+                            "name": name,
+                            "type": ctype,
+                            "params": cdata if isinstance(cdata, dict) else {}
+                        }
+                        ops.append(op_info)
+                        print(f"     └─[Child {j}] {ctype} -> {cdata}")
 
+                # 🔹 حالة العمليات مباشرة في الجذر
+                elif isinstance(data, dict):
+                    otype = data.get("type", "Unknown")
                     op_info = {
-                        "name": profile_name,
-                        "type": op_type,
-                        "params": {}
+                        "name": name,
+                        "type": otype,
+                        "params": data
                     }
-
-                    # 🧱 إذا كانت بيانات العملية موجودة في UserRole، نحفظها بالكامل
-                    if isinstance(data, dict):
-                        op_info["params"] = data
-
                     ops.append(op_info)
+                    print(f"  [RootOp {i}] {otype} -> {data}")
 
             print(f"[🧩] Collected {len(ops)} operations for saving.")
         except Exception as e:

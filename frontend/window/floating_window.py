@@ -13,6 +13,7 @@ from frontend.window.profiles_manager_v2_window import create_profile_manager_pa
 from frontend.window.hole_window import HoleWindow
 from frontend.window.shape_manager_window import create_shape_manager_page
 from frontend.window.gcode_generator_page import GCodeGeneratorPage
+from frontend.window.gcode_workbench_page import GCodeWorkbenchPage
 
 
 
@@ -190,6 +191,8 @@ def create_tool_window(parent):
 
     # داخل create_tool_window
     sim_page = GCodeSimulatorPage(parent)
+    # 🧠 G-Code Workbench Page
+    gcode_workbench_page = GCodeWorkbenchPage(parent.display, getattr(parent, "op_browser", None))
 
     # إضافة إلى الستاك
     stacked.addWidget(extrude_page)             # index 0
@@ -202,6 +205,7 @@ def create_tool_window(parent):
     stacked.addWidget(shape_page)               # index 7 🆕
     stacked.addWidget(gcode_page)               # index 8 🆕
     stacked.addWidget(sim_page)                 # index 9 🆕
+    stacked.addWidget(gcode_workbench_page)                 # index 10 🆕
 
 
     # ✅ حفظ المراجع داخل الـ dialog
@@ -215,6 +219,7 @@ def create_tool_window(parent):
     dialog.shape_page = shape_page
     dialog.gcode_page = gcode_page
     dialog.sim_page = sim_page
+    dialog.gcode_workbench_page =gcode_workbench_page
 
 
 
@@ -470,8 +475,10 @@ def create_tool_window(parent):
             header.setText("Shape")
         elif index == 8:
             header.setText("G-Code")
-        elif index == 8:
+        elif index == 9:
             header.setText("sim page")
+        elif index == 10:
+            header.setText("gcode workbench page")
         else:
             header.setText("Extrude")
         dialog.show()

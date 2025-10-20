@@ -331,6 +331,11 @@ class AlumCamGUI(QMainWindow):
         from file_ops import save_file_dialog
         save_file_dialog(self)
 
+    def open_file(self):
+        from file_ops import open_file_dialog
+        open_file_dialog(self)
+
+
     def save_project(self, shape, path, metadata):
         return save_file(shape, path, metadata)
 

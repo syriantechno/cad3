@@ -90,7 +90,7 @@ def create_topbar_tabs(parent):
 
 
         ("frontend/icons/tools_manager.png", "G-code", lambda: parent.show_extrude_window(8), False),
-        ("frontend/icons/tools_manager.png", "sim_page", lambda: parent.show_extrude_window(9), False)
+        ("frontend/icons/tools_manager.png", "sim_page", lambda: parent.show_extrude_window(10), False)
     ]
 
     create_tab("G-Code", g_code)

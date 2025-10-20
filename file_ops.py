@@ -129,8 +129,9 @@ def export_stl(shape: TopoDS_Shape, file_path: str):
         print("❌ فشل في تصدير STL")
 
 
-def open_file(self):
-    dlg = QFileDialog(self, "Open Project")
+def open_file_dialog(parent):
+    """فتح مشروع alucam من نافذة Open File بشكل آمن"""
+    dlg = QFileDialog(parent, "Open Project")
     dlg.setAcceptMode(QFileDialog.AcceptOpen)
     dlg.setNameFilter("Alucam Project (*.alucam)")
     dlg.setOption(QFileDialog.DontUseNativeDialog, True)
@@ -139,14 +140,29 @@ def open_file(self):
         path = dlg.selectedFiles()[0]
 
         def _do_load():
-            shape, metadata = load_project(path)
-            if shape:
-                self.loaded_shape = shape
-                self.display_shape_with_axes(shape)
-                print(f"📂 Metadata: {metadata}")
-            else:
-                print("❌ فشل في تحميل المشروع")
+            try:
+                shape, metadata = load_project(path)
+                if shape:
+                    parent.loaded_shape = shape
+
+                    # ✅ عرض الشكل بطريقة آمنة
+                    if hasattr(parent, "display_shape_with_axes"):
+                        parent.display_shape_with_axes(shape)
+                    elif hasattr(parent, "display") and hasattr(parent.display, "DisplayShape"):
+                        parent.display.DisplayShape(shape, update=True)
+                        print("🧭 تم عرض الشكل باستخدام DisplayShape")
+                    else:
+                        print("⚠️ لا توجد دالة عرض متاحة")
+
+                    parent.metadata = metadata
+                    print(f"📂 Metadata: {metadata}")
+                else:
+                    print("❌ فشل في تحميل المشروع")
+            except Exception as e:
+                print(f"🔥 خطأ أثناء تحميل المشروع: {e}")
 
         QTimer.singleShot(0, _do_load)
+
+
 
 

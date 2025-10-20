@@ -227,3 +227,9 @@ class OperationBrowser(QWidget):
             handler(ops)
         else:
             print("[GCODE] Emit ops:", ops)
+
+    # ---------- توافق مع صفحات أخرى ----------
+    def collect_operations(self):
+        """Alias متوافق مع G-Code Workbench"""
+        return self.get_all_ops()
+

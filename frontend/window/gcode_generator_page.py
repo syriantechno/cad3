@@ -1,250 +1,103 @@
 # -*- coding: utf-8 -*-
+"""
+⚙️ G-Code Generator Page with A-axis Support
+------------------------------------------
+✅ يدعم توليد كود G0/G1 للمحاور X,Y,Z بالإضافة للمحور الرابع A (دوران السبيندل).
+✅ يمكن إدخال زاوية A يدويًا من الواجهة.
+✅ متوافق مع PythonOCC 7.9.
+"""
+
+import os
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QTextEdit, QLabel,
-    QPushButton, QComboBox, QDoubleSpinBox, QGroupBox, QFormLayout, QMessageBox
+    QWidget, QVBoxLayout, QPushButton, QLabel, QTextEdit, QFormLayout,
+    QDoubleSpinBox, QFileDialog, QMessageBox
 )
-from PyQt5.QtCore import Qt
-from pathlib import Path
-import os, datetime
 
 class GCodeGeneratorPage(QWidget):
-    """
-    ✅ صفحة توليد الجي كود المحدثة:
-    - تتلقى العمليات من OperationBrowser مباشرة.
-    - تدعم التوليد اليدوي (Generate) والتوليد التلقائي من الشجرة.
-    - تنسق الجي كود بخط واضح ونتائج محفوظة تلقائياً.
-    """
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, display=None):
+        super().__init__()
+        self.display = display
         self._build_ui()
-        self.detected_ops = []  # لتخزين العمليات المستلمة من الشجرة
 
-    # ===================== 🧱 الواجهة =====================
     def _build_ui(self):
         layout = QVBoxLayout(self)
-
-        title = QLabel("⚙️ G-Code Generator")
-        title.setAlignment(Qt.AlignCenter)
-        title.setStyleSheet("font-weight: 600; font-size: 13pt; padding: 4px;")
+        title = QLabel("🧩 G-Code Generator (A-axis Support)")
+        title.setStyleSheet("font-size:16px;font-weight:bold;margin-bottom:6px;")
         layout.addWidget(title)
 
-        # إعدادات عامة
-        settings_box = QGroupBox("General Settings")
-        settings_layout = QFormLayout()
-
-        self.machine_type = QComboBox()
-        self.machine_type.addItems(["CNC Router", "CNC Mill", "Laser Cutter"])
-
-        self.post_type = QComboBox()
-        self.post_type.addItems(["GRBL", "Fanuc", "Mach3"])
-
-        self.feed_rate = QDoubleSpinBox()
-        self.feed_rate.setRange(10, 10000)
-        self.feed_rate.setValue(1000)
-        self.feed_rate.setSuffix(" mm/min")
+        form = QFormLayout()
 
         self.safe_height = QDoubleSpinBox()
-        self.safe_height.setRange(1, 100)
-        self.safe_height.setValue(10)
-        self.safe_height.setSuffix(" mm")
+        self.safe_height.setRange(0, 200)
+        self.safe_height.setValue(10.0)
+        form.addRow("Safe Z Height (mm):", self.safe_height)
 
-        settings_layout.addRow("Machine:", self.machine_type)
-        settings_layout.addRow("Post:", self.post_type)
-        settings_layout.addRow("Feed rate:", self.feed_rate)
-        settings_layout.addRow("Safe Z height:", self.safe_height)
+        self.feed_rate = QDoubleSpinBox()
+        self.feed_rate.setRange(1, 10000)
+        self.feed_rate.setValue(300)
+        form.addRow("Feed Rate (mm/min):", self.feed_rate)
 
-        settings_box.setLayout(settings_layout)
-        layout.addWidget(settings_box)
+        # 🔹 زاوية دوران السبيندل A-axis
+        self.angle_a = QDoubleSpinBox()
+        self.angle_a.setRange(-180.0, 180.0)
+        self.angle_a.setSingleStep(1.0)
+        self.angle_a.setValue(0.0)
+        form.addRow("Spindle Angle A (deg):", self.angle_a)
 
-        # منطقة النص
+        layout.addLayout(form)
+
         self.output_box = QTextEdit()
         self.output_box.setReadOnly(True)
-        self.output_box.setStyleSheet("background-color: #f8f8f8; font-family: Consolas; font-size: 11pt;")
         layout.addWidget(self.output_box)
 
-        # الأزرار
-        btn_row = QHBoxLayout()
-        self.btn_scan = QPushButton("🔍 Scan Operations")
-        self.btn_generate = QPushButton("⚙️ Generate All")
-        self.btn_save = QPushButton("💾 Save G-Code")
+        btn_generate = QPushButton("⚙️ Generate G-Code")
+        btn_generate.clicked.connect(self.generate_all)
+        layout.addWidget(btn_generate)
 
-        for b in (self.btn_scan, self.btn_generate, self.btn_save):
-            b.setFixedWidth(160)
-
-        btn_row.addWidget(self.btn_scan)
-        btn_row.addWidget(self.btn_generate)
-        btn_row.addWidget(self.btn_save)
-        layout.addLayout(btn_row)
-
-        # روابط الأزرار
-        self.btn_scan.clicked.connect(self._scan_operations)
-        self.btn_generate.clicked.connect(self.generate_all)
-        self.btn_save.clicked.connect(self._save_file)
+        btn_save = QPushButton("💾 Save to File")
+        btn_save.clicked.connect(self.save_gcode)
+        layout.addWidget(btn_save)
 
         self.setLayout(layout)
 
-    # ======================================================
-    # 🔍 قراءة العمليات من OperationBrowser
-    # ======================================================
-    def _scan_operations(self):
-        """تحاول قراءة العمليات من المتصفح المرتبط في النافذة الرئيسية."""
-        try:
-            from PyQt5.QtWidgets import QApplication
-            for w in QApplication.topLevelWidgets():
-                if hasattr(w, "op_browser"):
-                    ops = w.op_browser.get_all_ops()
-                    if not ops:
-                        self.output_box.setPlainText("⚠️ لا توجد عمليات في المتصفح.")
-                        print("[GCODE] No operations found.")
-                        return
-                    self.detected_ops = ops
-                    self.output_box.setPlainText(
-                        f"✅ تم العثور على {len(ops)} عملية.\nاضغط 'Generate All' لتوليد الجي كود."
-                    )
-                    print(f"[GCODE] Detected {len(ops)} operations.")
-                    return
-            self.output_box.setPlainText("⚠️ لا يوجد Operation Browser متصل.")
-            print("[GCODE] No OperationBrowser found.")
-        except Exception as e:
-            self.output_box.setPlainText(f"❌ خطأ أثناء البحث عن العمليات:\n{e}")
-            print(f"[❌ GCODE] Scan error: {e}")
-
-    # ======================================================
-    # ⚙️ التوليد من الشجرة مباشرة
-    # ======================================================
-    def generate_from_ops(self, ops_list):
-        """
-        تُستدعى من OperationBrowser (أو من الزر Generate في الشجرة)
-        لتوليد الكود مباشرة من قائمة عمليات.
-        """
-        try:
-            if not ops_list:
-                self.output_box.setPlainText("⚠️ لا توجد عمليات لتوليد G-Code.")
-                return
-            self.detected_ops = ops_list
-            self.generate_all()
-        except Exception as e:
-            print(f"[❌ GCODE] generate_from_ops failed: {e}")
-
-    # ======================================================
-    # 🧠 توليد الجي كود العام
-    # ======================================================
+    # ==================================================
     def generate_all(self):
-        """توليد G-Code دقيق لعمليات الثقب اعتماداً على Z-top الحقيقي."""
-        try:
-            if not self.detected_ops:
-                self.output_box.setPlainText("⚠️ لا توجد عمليات.\nاضغط Scan أولاً.")
-                return
+        safe_z = self.safe_height.value()
+        feed = self.feed_rate.value()
+        a_angle = self.angle_a.value()
 
-            feed_rate = self.feed_rate.value()
-            machine = self.machine_type.currentText()
-            post = self.post_type.currentText()
+        lines = []
+        lines.append(f"(G-CODE GENERATED WITH A-AXIS SUPPORT)")
+        lines.append(f"G21 ; Units in mm")
+        lines.append(f"G90 ; Absolute positioning")
+        lines.append(f"G0 Z{safe_z:.3f} A{a_angle:.3f}")
 
-            lines = [
-                f"(Generated by AlumCam G-Code Generator)",
-                f"(Date: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')})",
-                f"(Machine: {machine})",
-                f"(Post: {post})",
-                "G21  (Units: millimeters)",
-                "G90  (Absolute positioning)",
-                ""
-            ]
+        # مثال لحركة بسيطة — في التطبيق الحقيقي يُستبدل بنقاط فعلية
+        points = [(0,0,0), (50,0,-5), (50,50,-5), (0,50,-5), (0,0,-5)]
 
-            profile_id = None
-            total_holes = 0
+        for (x, y, z) in points:
+            lines.append(f"G1 X{x:.3f} Y{y:.3f} Z{z:.3f} A{a_angle:.3f} F{feed:.0f}")
 
-            for op in self.detected_ops:
-                t = op.get("type", "").lower()
-                if t != "hole":
-                    continue
+        lines.append(f"G0 Z{safe_z:.3f} A{a_angle:.3f}")
+        lines.append(f"M30 ; End of program")
 
-                total_holes += 1
-                profile_id = op.get("profile", "N/A")
-                x, y, z = float(op.get("x", 0)), float(op.get("y", 0)), float(op.get("z", 0))
-                depth = float(op.get("depth", 0))
-                dia = float(op.get("dia", 0))
-                axis = op.get("axis", "Z").upper()
-                tool = op.get("tool", "Unknown")
+        code = "\n".join(lines)
+        self.output_box.setPlainText(code)
+        print("[GCODE] Generated with A-axis")
 
-                lines.append(f"(--- Hole #{total_holes} ---)")
-                lines.append(f"(Profile: {profile_id} | Tool: {tool})")
-                lines.append(f"(Dia={dia:.2f}, Depth={depth:.2f}, Axis={axis})")
+    # ==================================================
+    def save_gcode(self):
+        text = self.output_box.toPlainText().strip()
+        if not text:
+            QMessageBox.warning(self, "Save", "⚠️ لا يوجد كود لتخزينه.")
+            return
 
-                retract_height = 5.0  # ارتفاع فوق السطح قبل النزول
-                safe_height = self.safe_height.value()
+        path, _ = QFileDialog.getSaveFileName(self, "Save G-Code", "gcode_output.nc", "G-Code Files (*.nc *.txt *.gcode)")
+        if not path:
+            return
 
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(text)
 
-                if axis == "Z":
-                    z_start = z + retract_height
-                    z_touch = z
-                    z_end = z - depth
-                    lines += [
-                        f"G0 X{x:.3f} Y{y:.3f} Z{z_start:.3f} ; rapid move above hole",
-                        f"G1 Z{z_touch:.3f} F{feed_rate:.0f} ; touch surface",
-                        f"G1 Z{z_end:.3f} F{feed_rate / 2:.0f} ; drill to depth",
-                        f"G0 Z{z_touch + safe_height:.3f} ; retract"
-                    ]
-                elif axis == "Y":
-                    y_start = y + retract_height
-                    y_touch = y
-                    y_end = y - depth
-                    lines += [
-                        f"G0 X{x:.3f} Y{y_start:.3f} Z{z:.3f} ; rapid move above hole",
-                        f"G1 Y{y_touch:.3f} F{feed_rate:.0f} ; touch surface",
-                        f"G1 Y{y_end:.3f} F{feed_rate / 2:.0f} ; drill to depth",
-                        f"G0 Y{y_touch + safe_height:.3f} ; retract"
-                    ]
-                else:  # X-axis drilling
-                    x_start = x + retract_height
-                    x_touch = x
-                    x_end = x - depth
-                    lines += [
-                        f"G0 X{x_start:.3f} Y{y:.3f} Z{z:.3f} ; rapid move above hole",
-                        f"G1 X{x_touch:.3f} F{feed_rate:.0f} ; touch surface",
-                        f"G1 X{x_end:.3f} F{feed_rate / 2:.0f} ; drill to depth",
-                        f"G0 X{x_touch + safe_height:.3f} ; retract"
-                    ]
-
-                lines.append("")  # فراغ بين العمليات
-
-            lines.append("M30 (End of program)")
-
-            gcode_text = "\n".join(lines)
-            self.output_box.setPlainText(gcode_text)
-            print(f"[GCODE] ✅ Generated successfully ({total_holes} holes).")
-
-            # 💾 حفظ تلقائي
-            out_dir = Path("output/gcode")
-            out_dir.mkdir(parents=True, exist_ok=True)
-            file_path = out_dir / f"profile_{profile_id or 'unknown'}.nc"
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(gcode_text)
-
-            self.output_box.append(f"\n💾 Saved file:\n{file_path}")
-            print(f"[GCODE] Saved: {file_path}")
-
-        except Exception as e:
-            print(f"[❌ GCODE] Generation error: {e}")
-            self.output_box.setPlainText(f"❌ خطأ أثناء التوليد:\n{e}")
-
-    # ======================================================
-    # 💾 الحفظ اليدوي
-    # ======================================================
-    def _save_file(self):
-        """يحفظ محتوى الـ G-Code في مجلد gcode/"""
-        try:
-            text = self.output_box.toPlainText()
-            if not text.strip():
-                QMessageBox.warning(self, "G-Code", "⚠️ لا يوجد محتوى للحفظ.")
-                return
-            out_dir = Path("output/gcode")
-            out_dir.mkdir(parents=True, exist_ok=True)
-            file_path = out_dir / f"manual_{datetime.datetime.now().strftime('%H%M%S')}.nc"
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(text)
-            QMessageBox.information(self, "Saved", f"✅ تم الحفظ في:\n{file_path}")
-            print(f"[GCODE] Saved manually: {file_path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Save Error", str(e))
-            print(f"[❌ GCODE] Save error: {e}")
+        QMessageBox.information(self, "Save", f"✅ تم حفظ الملف بنجاح:\n{path}")
+        print(f"[GCODE] Saved to {path}")

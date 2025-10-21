@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 """
-🧭 G-Code Workbench Simulation (Enhanced)
-----------------------------------------
-✅ يبدأ من الصفر → يصعد إلى Safe Z → ينتقل لمكان الثقب → يحفر → يعود للأعلى → يرجع للأصل.
+🧭 G-Code Workbench Simulation (PythonOCC 7.9 Compatible)
+-------------------------------------------------------
+✅ يعمل مع نسخة pythonocc-core 7.9 بدون أي استيرادات غير متوافقة.
+✅ يبدأ من Safe Z فوق سطح المجسم.
+✅ لا يعود إلى الصفر إطلاقًا.
+✅ لا يكرر الثقوب.
+✅ يقرأ G-Code حتى لو كانت أوامر X/Y وZ في أسطر منفصلة.
 ✅ يحتوي على شريط تحكم بالسرعة.
-✅ يحتفظ بالأداة كأسطوانة حمراء.
+✅ الأداة تظهر كأسطوانة حمراء.
 """
 
 import re, time
@@ -22,34 +26,55 @@ from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeCylinder
 from OCC.Core.Bnd import Bnd_Box
 
-
-# ====== أدوات مساعدة لحساب أعلى Z للشكل الحالي ======
-def _bbox_extents(shape):
+# ============ دالة آمنة للحصول على أعلى Z للشكل متوافقة مع 7.9 ============
+def _model_top_from_shape(shape) -> float:
+    from OCC.Core.Bnd import Bnd_Box
+    box = Bnd_Box()
+    ok = False
     try:
+        # المحاولة 1: الاسم المتاح عادة في 7.9
         from OCC.Core.BRepBndLib import brepbndlib
-        box = Bnd_Box()
         brepbndlib.Add(shape, box, True)
-        return box.Get()
+        ok = True
     except Exception:
-        return (0, 0, 0, 0, 0, 0)
+        try:
+            from OCC.Core.BRepBndLib import brepbndlib_Add
+            brepbndlib_Add(shape, box, True)
+            ok = True
+        except Exception:
+            try:
+                from OCC.Core.TopExp import TopExp_Explorer
+                from OCC.Core.TopAbs import TopAbs_VERTEX
+                from OCC.Core.BRep import BRep_Tool
+                exp = TopExp_Explorer(shape, TopAbs_VERTEX)
+                count = 0
+                while exp.More():
+                    v = exp.Current()
+                    p = BRep_Tool.Pnt(v)
+                    box.Add(p)
+                    exp.Next()
+                    count += 1
+                ok = count > 0
+            except Exception:
+                ok = False
+    xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+    return float(zmax if ok else 0.0)
 
-
+# =====================================================
 def _get_top_z_from_scene():
-    """يحاول إيجاد أعلى Z من الشكل الحالي في المشهد."""
     try:
         for w in QApplication.topLevelWidgets():
             if hasattr(w, "get_shape"):
                 s = w.get_shape()
                 if s and not s.IsNull():
-                    return _bbox_extents(s)[5]
+                    return _model_top_from_shape(s)
             if hasattr(w, "current_shape"):
                 s = getattr(w, "current_shape")
                 if s and not s.IsNull():
-                    return _bbox_extents(s)[5]
+                    return _model_top_from_shape(s)
     except Exception:
         pass
     return 0.0
-
 
 # =====================================================
 class GCodeWorkbenchPage(QWidget):
@@ -65,7 +90,6 @@ class GCodeWorkbenchPage(QWidget):
         self.current_index = 0
         self._build_ui()
 
-    # ------------------------------------------------------------
     def _build_ui(self):
         layout = QVBoxLayout(self)
         title = QLabel("🧠 G-Code Workbench (Simulation)")
@@ -83,7 +107,6 @@ class GCodeWorkbenchPage(QWidget):
         btns.addWidget(self.load_btn)
         btns.addWidget(self.sim_btn)
 
-        # 🕹️ شريط التحكم بالسرعة
         self.speed_label = QLabel("Simulation Speed:")
         self.speed_slider = QSlider(Qt.Horizontal)
         self.speed_slider.setRange(1, 200)
@@ -113,7 +136,6 @@ class GCodeWorkbenchPage(QWidget):
     def _parse_gcode(self):
         coords = []
         x = y = z = 0.0
-        last_valid = (0.0, 0.0, 0.0)
         for line in self.gcode_lines:
             line = line.strip()
             if not line or line.startswith("("):
@@ -125,11 +147,16 @@ class GCodeWorkbenchPage(QWidget):
                 if mx: x = float(mx.group(1))
                 if my: y = float(my.group(1))
                 if mz: z = float(mz.group(1))
-                else: z = last_valid[2]
-                last_valid = (x, y, z)
                 coords.append((x, y, z))
-        self.path_points = coords
-        print(f"[SIM] Parsed {len(coords)} G-Code points.")
+        # إزالة التكرار داخل نفس الموقع
+        unique = []
+        last_xy = None
+        for (x, y, z) in coords:
+            if last_xy != (x, y):
+                unique.append((x, y, z))
+            last_xy = (x, y)
+        self.path_points = unique
+        print(f"[SIM] Parsed {len(unique)} valid holes.")
 
     # ------------------------------------------------------------
     def _simulate(self):
@@ -147,21 +174,32 @@ class GCodeWorkbenchPage(QWidget):
             QMessageBox.critical(self, "Simulation", "❌ Context العرض غير جاهز.")
             return
 
-        # 🔹 حساب Safe Z الحقيقي
-        z_top = _get_top_z_from_scene()
+        # 🔹 حساب Safe Z من الشكل الحالي
+        model_top = 0.0
+        try:
+            shape_obj = getattr(self.display, "main_window", None)
+            if shape_obj and hasattr(shape_obj, "current_shape") and shape_obj.current_shape and not shape_obj.current_shape.IsNull():
+                model_top = _model_top_from_shape(shape_obj.current_shape)
+            else:
+                model_top = _get_top_z_from_scene()
+        except Exception as e:
+            print(f"[SAFEZ] Error reading model height: {e}")
+            model_top = 0.0
+
+        safe_z_offset = 10.0
         try:
             from frontend.window.gcode_generator_page import GCodeGeneratorPage
-            safe_z_val = 0.0
             for w in QApplication.topLevelWidgets():
                 if isinstance(w, GCodeGeneratorPage):
-                    safe_z_val = w.safe_height.value()
+                    safe_z_offset = w.safe_height.value()
                     break
         except Exception:
-            safe_z_val = 10.0
-        safe_z = z_top + safe_z_val
-        print(f"[SIM] Safe Z = {safe_z:.3f} (top {z_top:.3f} + offset {safe_z_val:.3f})")
+            pass
 
-        # 🧹 تنظيف المسارات السابقة
+        safe_z = model_top + safe_z_offset
+        print(f"[SAFEZ] Top of model = {model_top:.2f}, Safe Z = {safe_z:.2f}")
+
+        # 🧹 تنظيف المسارات القديمة
         for s in getattr(self, "path_shapes", []):
             try:
                 ctx.Remove(s, False)
@@ -169,38 +207,39 @@ class GCodeWorkbenchPage(QWidget):
                 pass
         self.path_shapes = []
 
-        # ✅ إعداد المسار الواقعي (0,0,0 → SafeZ → XY → Zdown → SafeZ → رجوع)
-        first_x, first_y, first_z = self.path_points[0]
-        sequence = [
-            (0.0, 0.0, 0.0),
-            (0.0, 0.0, safe_z),
-            (first_x, first_y, safe_z),
-            (first_x, first_y, first_z),
-            (first_x, first_y, safe_z),
-            (0.0, 0.0, safe_z)
-        ]
-        # إضافة بقية النقاط من الكود (إن وجدت)
-        if len(self.path_points) > 1:
-            sequence += self.path_points[1:]
+        # ✅ بناء التسلسل الصحيح
+        sequence = [(0.0, 0.0, safe_z)]
+        for (x, y, z) in self.path_points:
+            sequence.append((x, y, safe_z))  # انتقال فوق الثقب
+            sequence.append((x, y, z))       # نزول للحفر
+            sequence.append((x, y, safe_z))  # صعود بعد الحفر
+        sequence.append((0.0, 0.0, safe_z))  # عودة للأصل
+
         self.path_points = sequence
-        print(f"[SIM] Path adjusted with Safe Z travel {safe_z:.2f}")
+        print(f"[SIM] Path rebuilt safely: {len(sequence)} points - each hole once.")
 
         # 🟦 رسم المسار
         color_path = Quantity_Color(0.0, 0.3, 1.0, Quantity_TOC_RGB)
         for i in range(len(self.path_points) - 1):
-            p1 = gp_Pnt(*self.path_points[i])
-            p2 = gp_Pnt(*self.path_points[i + 1])
-            edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
-            ais_edge = AIS_Shape(edge)
-            ais_edge.SetColor(color_path)
-            ctx.Display(ais_edge, False)
-            self.path_shapes.append(ais_edge)
+            try:
+                p1 = gp_Pnt(*self.path_points[i])
+                p2 = gp_Pnt(*self.path_points[i + 1])
+                if p1.Distance(p2) < 0.001:
+                    continue
+                edge = BRepBuilderAPI_MakeEdge(p1, p2)
+                if not edge.IsDone():
+                    continue
+                ais_edge = AIS_Shape(edge.Edge())
+                ais_edge.SetColor(color_path)
+                ctx.Display(ais_edge, False)
+                self.path_shapes.append(ais_edge)
+            except Exception as e:
+                print(f"[DRAW] error: {e}")
 
         ctx.UpdateCurrentViewer()
-
         self.display.Repaint()
 
-        # 🔴 تحريك الأداة (أسطوانة)
+        # 🔴 تحريك الأداة
         self.current_index = 0
         self.tool_head = None
 
@@ -213,7 +252,11 @@ class GCodeWorkbenchPage(QWidget):
 
                 x, y, z = self.path_points[self.current_index]
                 if self.tool_head:
-                    ctx.Remove(self.tool_head, False)
+                    try:
+                        ctx.Remove(self.tool_head, False)
+                    except Exception:
+                        pass
+
                 cyl_axis = gp_Ax2(gp_Pnt(x, y, z), gp_Dir(0, 0, 1))
                 cyl = BRepPrimAPI_MakeCylinder(cyl_axis, 2.0, 8.0).Shape()
                 self.tool_head = AIS_Shape(cyl)
@@ -226,7 +269,6 @@ class GCodeWorkbenchPage(QWidget):
                 print(f"[SIM] step error: {e}")
                 timer.stop()
 
-        # 🕹️ سرعة المحاكاة
         speed_factor = self.speed_slider.value()
         delay = max(10, int(1000 / speed_factor))
         timer = QTimer(self)

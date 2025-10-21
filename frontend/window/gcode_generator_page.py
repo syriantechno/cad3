@@ -44,9 +44,16 @@ class GCodeGeneratorPage(QWidget):
         self.feed_rate.setValue(1000)
         self.feed_rate.setSuffix(" mm/min")
 
+        self.safe_height = QDoubleSpinBox()
+        self.safe_height.setRange(1, 100)
+        self.safe_height.setValue(10)
+        self.safe_height.setSuffix(" mm")
+
         settings_layout.addRow("Machine:", self.machine_type)
         settings_layout.addRow("Post:", self.post_type)
         settings_layout.addRow("Feed rate:", self.feed_rate)
+        settings_layout.addRow("Safe Z height:", self.safe_height)
+
         settings_box.setLayout(settings_layout)
         layout.addWidget(settings_box)
 
@@ -124,7 +131,7 @@ class GCodeGeneratorPage(QWidget):
     # 🧠 توليد الجي كود العام
     # ======================================================
     def generate_all(self):
-        """توليد G-Code ذكي لكل عمليات الحفر."""
+        """توليد G-Code دقيق لعمليات الثقب اعتماداً على Z-top الحقيقي."""
         try:
             if not self.detected_ops:
                 self.output_box.setPlainText("⚠️ لا توجد عمليات.\nاضغط Scan أولاً.")
@@ -151,6 +158,7 @@ class GCodeGeneratorPage(QWidget):
                 t = op.get("type", "").lower()
                 if t != "hole":
                     continue
+
                 total_holes += 1
                 profile_id = op.get("profile", "N/A")
                 x, y, z = float(op.get("x", 0)), float(op.get("y", 0)), float(op.get("z", 0))
@@ -163,18 +171,42 @@ class GCodeGeneratorPage(QWidget):
                 lines.append(f"(Profile: {profile_id} | Tool: {tool})")
                 lines.append(f"(Dia={dia:.2f}, Depth={depth:.2f}, Axis={axis})")
 
-                if axis == "Z":
-                    lines.append(f"G0 X{x:.3f} Y{y:.3f}")
-                    lines.append(f"G81 Z-{depth:.3f} R2.0 F{feed_rate:.0f}")
-                elif axis == "Y":
-                    lines.append(f"G0 X{x:.3f} Z{z:.3f}")
-                    lines.append(f"G81 Y-{depth:.3f} R2.0 F{feed_rate:.0f}")
-                else:
-                    lines.append(f"G0 Y{y:.3f} Z{z:.3f}")
-                    lines.append(f"G81 X-{depth:.3f} R2.0 F{feed_rate:.0f}")
+                retract_height = 5.0  # ارتفاع فوق السطح قبل النزول
+                safe_height = self.safe_height.value()
 
-                lines.append("G80")
-                lines.append("")
+
+                if axis == "Z":
+                    z_start = z + retract_height
+                    z_touch = z
+                    z_end = z - depth
+                    lines += [
+                        f"G0 X{x:.3f} Y{y:.3f} Z{z_start:.3f} ; rapid move above hole",
+                        f"G1 Z{z_touch:.3f} F{feed_rate:.0f} ; touch surface",
+                        f"G1 Z{z_end:.3f} F{feed_rate / 2:.0f} ; drill to depth",
+                        f"G0 Z{z_touch + safe_height:.3f} ; retract"
+                    ]
+                elif axis == "Y":
+                    y_start = y + retract_height
+                    y_touch = y
+                    y_end = y - depth
+                    lines += [
+                        f"G0 X{x:.3f} Y{y_start:.3f} Z{z:.3f} ; rapid move above hole",
+                        f"G1 Y{y_touch:.3f} F{feed_rate:.0f} ; touch surface",
+                        f"G1 Y{y_end:.3f} F{feed_rate / 2:.0f} ; drill to depth",
+                        f"G0 Y{y_touch + safe_height:.3f} ; retract"
+                    ]
+                else:  # X-axis drilling
+                    x_start = x + retract_height
+                    x_touch = x
+                    x_end = x - depth
+                    lines += [
+                        f"G0 X{x_start:.3f} Y{y:.3f} Z{z:.3f} ; rapid move above hole",
+                        f"G1 X{x_touch:.3f} F{feed_rate:.0f} ; touch surface",
+                        f"G1 X{x_end:.3f} F{feed_rate / 2:.0f} ; drill to depth",
+                        f"G0 X{x_touch + safe_height:.3f} ; retract"
+                    ]
+
+                lines.append("")  # فراغ بين العمليات
 
             lines.append("M30 (End of program)")
 
@@ -182,7 +214,7 @@ class GCodeGeneratorPage(QWidget):
             self.output_box.setPlainText(gcode_text)
             print(f"[GCODE] ✅ Generated successfully ({total_holes} holes).")
 
-            # حفظ الملف تلقائيًا
+            # 💾 حفظ تلقائي
             out_dir = Path("output/gcode")
             out_dir.mkdir(parents=True, exist_ok=True)
             file_path = out_dir / f"profile_{profile_id or 'unknown'}.nc"

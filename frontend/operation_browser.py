@@ -80,6 +80,12 @@ class OperationBrowser(QWidget):
         root = self._ensure_profile(profile_name)
         text = f"Extrude {height:g} along {axis}"
         node = QTreeWidgetItem(root, ["Extrude", text])
+        node.setData(0, Qt.UserRole, {
+            "type": "Extrude",
+            "height": float(height),
+            "axis": axis
+        })
+
         if self.ICONS["extrude"]:
             node.setIcon(0, QIcon(self.ICONS["extrude"]))
         node.setToolTip(0, text)
@@ -109,9 +115,13 @@ class OperationBrowser(QWidget):
 
         node.setData(0, Qt.UserRole, {
             "type": "Hole",
-            "x": float(x), "y": float(y), "z": float(z),
-            "dia": float(dia), "depth": float(depth),
-            "axis": axis, "tool": tool or ""
+            "x": float(x),
+            "y": float(y),
+            "z": float(z),
+            "dia": float(dia),
+            "depth": float(depth),
+            "axis": axis,
+            "tool": tool or ""
         })
 
         self._ops_count += 1
@@ -292,13 +302,20 @@ class OperationBrowser(QWidget):
 
             # 🕳️ Hole
             elif "hole" in op_type_lower and hasattr(self, "add_hole"):
-                pos_xyz = params.get("pos", (0, 0, 0))
+                # استخراج الإحداثيات من x,y,z وليس pos
+                x = params.get("x", 0)
+                y = params.get("y", 0)
+                z = params.get("z", 0)
+                pos_xyz = (x, y, z)
+
                 dia = params.get("dia", 0)
                 depth = params.get("depth", 0)
                 axis = params.get("axis", "Z")
                 tool = params.get("tool", "")
+
                 self.add_hole(op_name, pos_xyz, dia, depth, axis, tool)
-                print(f"[🔁] Restored hole '{op_name}' Ø{dia} ⬇{depth} ({axis}) at {pos_xyz}")
+                print(f"[🔁] Restored hole '{op_name}' Ø{dia} ⬇{depth} ({axis}) at ({x}, {y}, {z})")
+
 
             # 🧩 Pattern / أي نوع آخر
             elif "pattern" in op_type_lower and hasattr(self, "add_pattern"):

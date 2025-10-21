@@ -123,7 +123,7 @@ def open_project_dialog(parent):
             if shape.IsNull():
                 raise ValueError("Failed to load BREP shape (null shape)")
 
-            # 🧱 عرض الشكل في العارض Fusion-style
+            # عرض الشكل
             if hasattr(parent, "display"):
                 parent.display.EraseAll()
                 from OCC.Core.AIS import AIS_Shape
@@ -132,27 +132,31 @@ def open_project_dialog(parent):
                 parent.display.FitAll()
                 print(f"[✅] Shape restored and displayed from: {brep_path}")
 
-            # 🧩 حفظه في الذاكرة للوصول إليه لاحقًا
-            parent.current_shape = shape
+            parent.current_shape = shape  # احتفاظ بالشكل في الذاكرة
 
-        # 🧠 تحميل العمليات المخزنة (إن وجدت)
+        # 🧠 استرجاع العمليات مع تمرير params دائمًا
         if operations:
-            if hasattr(parent, "op_browser") and parent.op_browser:
-                if hasattr(parent.op_browser, "load_operations"):
-                    parent.op_browser.load_operations(operations)
-                    print(f"[✅] Operations restored to op_browser.")
-                else:
-                    for op in operations:
-                        try:
-                            op_type = op.get("type", "Unknown")
-                            op_name = op.get("name", "Unnamed")
-                            params = op.get("params", {})  # ← هنا المهم
-                            parent.op_browser.add_operation(op_type, op_name, params)
-                        except Exception as e:
-                            print(f"[⚠️] Failed to reload operation: {e}")
+            if hasattr(parent, "op_browser") and parent.op_browser and hasattr(parent.op_browser, "add_operation"):
+                print(f"[🔁] Found {len(operations)} stored operations.")
+                for op in operations:
+                    try:
+                        op_type = op.get("type", "Unknown")
+                        op_name = op.get("name", "Unnamed")
+                        params  = op.get("params", {}) or {}
 
+                        # تمرير الإحداثيات إن وجدت
+                        if op_type.lower().startswith("hole"):
+                            x = params.get("x", 0); y = params.get("y", 0); z = params.get("z", 0)
+                            dia = params.get("dia", 0); depth = params.get("depth", 0)
+                            axis = params.get("axis", "Z"); tool = params.get("tool", "")
+                            print(f"[TRACE] Hole params -> name={op_name}, pos=({x},{y},{z}), dia={dia}, depth={depth}, axis={axis}, tool={tool}")
+
+                        parent.op_browser.add_operation(op_type, op_name, params)
+                    except Exception as e:
+                        print(f"[⚠️] Failed to reload operation: {e}")
+                print(f"[✅] Operations restored to op_browser.")
             else:
-                print("[⚠️] No op_browser found in main window.")
+                print("[⚠️] No suitable op_browser.add_operation found.")
         else:
             print("[ℹ️] No operations saved in project.")
 
@@ -161,5 +165,6 @@ def open_project_dialog(parent):
     except Exception as e:
         QMessageBox.critical(parent, "Open Project", f"❌ Failed to open project:\n{e}")
         print(f"[❌] Failed to open project: {e}")
+
 
 

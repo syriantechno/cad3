@@ -87,6 +87,11 @@ class GCodeSimulatorPage(QWidget):
             pass
         self.path_shapes = []
 
+        # ✅ إدخال نقطة البداية عند الأصل 0,0,0 لرؤية مسار الوصول
+        if self.path_points and self.path_points[0] != (0.0, 0.0, 0.0):
+            self.path_points.insert(0, (0.0, 0.0, 0.0))
+            print("[SIM] Origin (0,0,0) inserted as start point.")
+
         # 🟦 رسم خطوط المسار
         color_path = Quantity_Color(0.0, 0.0, 1.0, Quantity_TOC_RGB)
         for i in range(len(self.path_points) - 1):
@@ -98,7 +103,7 @@ class GCodeSimulatorPage(QWidget):
             ctx.Display(ais, False)
             self.path_shapes.append(ais)
         disp.FitAll()
-
+        disp.Repaint()
         # 🔴 إنشاء أداة المحاكاة كنقطة هندسية
         color_tool = Quantity_Color(1.0, 0.0, 0.0, Quantity_TOC_RGB)
         last_point = None

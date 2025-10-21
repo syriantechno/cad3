@@ -6,7 +6,6 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt, QTimer
 from OCC.Core.AIS import AIS_Shape
-    # Quantity_Color for coloring preview/flash shapes
 from OCC.Core.Quantity import Quantity_Color, Quantity_TOC_RGB
 
 # === مشروعك: لا تغييرات على الاستيرادات الموجودة لديك ===
@@ -14,6 +13,13 @@ from tools.geometry_ops import add_hole, preview_hole
 from tools.color_utils import display_with_fusion_style
 from tools.dimensions import measure_shape, hole_reference_dimensions, hole_size_dimensions
 from frontend.window.tools_db import ToolsDB
+
+
+# ✅ توافق 7.9: لا نعتمد على اسم دالة واحد للـ bbox
+from OCC.Core.Bnd import Bnd_Box
+from OCC.Core.TopAbs import TopAbs_VERTEX
+from OCC.Core.TopExp import TopExp_Explorer
+from OCC.Core.BRep import BRep_Tool
 
 import os, json
 from pathlib import Path
@@ -23,12 +29,83 @@ PREFS_PATH = Path("data/hole_prefs.json")
 IMAGES_DIR = Path("tools/images")
 
 
+# ==============================
+# 🧩 طبقة توافق لاستخراج حدود الشكل (bbox)
+# ==============================
+def _bbox_extents(shape):
+    """
+    ترجع حدود الشكل: (xmin, ymin, zmin, xmax, ymax, zmax)
+    تحاول عدة طرق متوافقة مع إصدارات pythonocc المختلفة.
+    """
+    # 1) نحاول عبر BRepBndLib (قد تختلف أسماء الدوال بين الإصدارات)
+    try:
+        from OCC.Core.BRepBndLib import brepbndlib
+        box = Bnd_Box()
+        brepbndlib.Add(shape, box, True)
+
+        return box.Get()
+    except Exception:
+        pass
+
+    try:
+        from OCC.Core.BRepBndLib import BRepBndLib_Add
+        box = Bnd_Box()
+        try:
+            BRepBndLib_Add(shape, box, True)
+        except TypeError:
+            BRepBndLib_Add(shape, box)
+        return box.Get()
+    except Exception:
+        pass
+
+    # 2) بديل مضمون: مسح جميع الرؤوس لاستخراج أقل/أعلى XYZ
+    try:
+        xmin = ymin = zmin = float("inf")
+        xmax = ymax = zmax = float("-inf")
+        exp = TopExp_Explorer(shape, TopAbs_VERTEX)
+        any_vertex = False
+        while exp.More():
+            v = exp.Current()
+            p = BRep_Tool.Pnt(v)
+            x, y, z = p.X(), p.Y(), p.Z()
+            xmin = min(xmin, x); ymin = min(ymin, y); zmin = min(zmin, z)
+            xmax = max(xmax, x); ymax = max(ymax, y); zmax = max(zmax, z)
+            any_vertex = True
+            exp.Next()
+        if any_vertex:
+            return (xmin, ymin, zmin, xmax, ymax, zmax)
+    except Exception:
+        pass
+
+    # 3) فشل — نعيد صندوق افتراضي
+    print("[BBOX] ⚠️ Failed to compute bbox with all strategies.")
+    return (0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+
+def get_axis_top_coord(shape, axis: str) -> float:
+    """
+    السطح الأعلى على محور معين:
+    - Z => zmax
+    - Y => ymax
+    - X => xmax
+    """
+    xmin, ymin, zmin, xmax, ymax, zmax = _bbox_extents(shape)
+    if axis == "Z":
+        return zmax
+    if axis == "Y":
+        return ymax
+    if axis == "X":
+        return xmax
+    # افتراضيًا اعتبر Z
+    return zmax
+
+
 class HoleWindow(QWidget):
     """
-    نسخة نهائية:
-    - لا تغيير على التواقيع العامة للدوال.
-    - إضافة العملية إلى Operation Browser تتم داخليًا إذا عُثر على op_browser.
-    - إصلاح معاينة الأبعاد لتتجنب unpack من None.
+    نسخة نهائية بعد التعديل:
+    - الصفر للأداة = أعلى سطح للمجسم على المحور المختار (Z/Y/X).
+    - المعاينة والـ G-code تعتمد على هذا السطح الأعلى.
+    - طباعة debug للقيم الفعلية.
     """
     def __init__(self, parent=None, display=None, shape_getter=None, shape_setter=None):
         super().__init__(parent)
@@ -117,7 +194,7 @@ class HoleWindow(QWidget):
         """)
         layout.addWidget(self.tool_summary)
 
-        # 🎛️ أزرار بالمنتصف
+        # 🎛️ أزرار
         btns_row = QHBoxLayout(); btns_row.setAlignment(Qt.AlignCenter)
         self.preview_btn = QPushButton("Preview Hole")
         self.apply_btn = QPushButton("Apply Hole")
@@ -239,12 +316,7 @@ class HoleWindow(QWidget):
             return None
 
     def _safe_dims_preview(self, base_shape, x, y, z, dia, axis, depth):
-        """
-        يعالج نتائج الدوال البعدية حتى لو رجعت None أو عنصر واحد،
-        لتجنب خطأ unpack.
-        """
         elems = []
-
         try:
             ref_dims = hole_reference_dimensions(
                 self.display, x, y, z, base_shape, offset_above=10, preview=True
@@ -280,6 +352,17 @@ class HoleWindow(QWidget):
             print("[PREVIEW] ⚠️ No valid base shape for preview.")
             return
 
+        # 🧭 احصل على أعلى إحداثي على المحور المختار
+        top = get_axis_top_coord(base_shape, axis)
+
+        # عدّل الإحداثي الموافق للمحور
+        if axis == "Z":
+            cx, cy, cz = x, y, top
+        elif axis == "Y":
+            cx, cy, cz = x, top, z
+        else:  # X
+            cx, cy, cz = top, y, z
+
         # امسح المعاينة السابقة
         try:
             if self._hole_preview_ais:
@@ -290,7 +373,21 @@ class HoleWindow(QWidget):
         self._preview_dim_shapes.clear()
 
         # أنشئ معاينة
-        hole_shape = preview_hole(base_shape, x, y, z, dia, axis, preview_len)
+
+        # 🧭 احصل على أعلى إحداثي على المحور المختار
+        # ✅ نرفع مركز الأسطوانة للأعلى حتى تلامس قاعدتها السطح العلوي للمجسم
+        if axis == "Z":
+            cz = top + preview_len
+            hole_shape = preview_hole(base_shape, cx, cy, cz, dia, axis, preview_len)
+        elif axis == "Y":
+            cy = top + (preview_len / 2.0)
+            hole_shape = preview_hole(base_shape, cx, cy, cz, dia, axis, preview_len)
+        elif axis == "X":
+            cx = top + (preview_len / 2.0)
+            hole_shape = preview_hole(base_shape, cx, cy, cz, dia, axis, preview_len)
+        else:
+            hole_shape = preview_hole(base_shape, cx, cy, top, dia, axis, preview_len)
+
         if not hole_shape or hole_shape.IsNull():
             print("[⚠] Hole preview shape is null — skip")
             return
@@ -305,9 +402,10 @@ class HoleWindow(QWidget):
         self._hole_preview_ais = ais
 
         if ENABLE_PREVIEW_DIMS:
-            self._safe_dims_preview(base_shape, x, y, z, dia, axis, depth)
+            self._safe_dims_preview(base_shape, cx, cy, cz, dia, axis, depth)
 
         self.display.Context.UpdateCurrentViewer()
+        print(f"[PREVIEW] Hole preview at top({axis})={top:.3f} -> ({cx:.3f},{cy:.3f},{cz:.3f})")
 
     def apply_hole(self):
         vals = self._get_values()
@@ -322,8 +420,26 @@ class HoleWindow(QWidget):
             return None
 
         try:
-            # إنشاء الثقب
-            result = add_hole(base_shape, x, y, z, dia, axis, depth=depth)
+            # 🧭 حساب أعلى إحداثي على المحور المختار
+            top = get_axis_top_coord(base_shape, axis)
+
+            if axis == "Z":
+                cx, cy, cz = x, y, top
+                start = (cx, cy, cz)
+                end = (cx, cy, cz - depth)
+            elif axis == "Y":
+                cx, cy, cz = x, top, z
+                start = (cx, cy, cz)
+                end = (cx, cy - depth, cz)
+            else:  # X
+                cx, cy, cz = top, y, z
+                start = (cx, cy, cz)
+                end = (cx - depth, cy, cz)
+
+            print(f"[HOLE] Axis={axis} | Top={top:.3f} | Start={start} | End={end}")
+
+            # إنشاء الثقب بناءً على السطح الأعلى على المحور
+            result = add_hole(base_shape, cx, cy, cz, dia, axis, depth=depth)
             if not result or result.IsNull():
                 print("[❌] add_hole returned null result.")
                 return None
@@ -341,14 +457,14 @@ class HoleWindow(QWidget):
             self.set_shape(result)
             display_with_fusion_style(result, self.display)
             measure_shape(self.display, result)
-            hole_reference_dimensions(self.display, x, y, z, result, offset_above=10)
-            hole_size_dimensions(self.display, x, y, z, dia, axis, depth, result, offset_above=10)
+            hole_reference_dimensions(self.display, cx, cy, cz, result, offset_above=10)
+            hole_size_dimensions(self.display, cx, cy, cz, dia, axis, depth, result, offset_above=10)
             self.display.Context.UpdateCurrentViewer()
             self.display.Repaint()
 
             # وميض سريع بعد التنفيذ
             try:
-                blink_shape = preview_hole(result, x, y, z, dia, axis, 8.0)
+                blink_shape = preview_hole(result, cx, cy, cz, dia, axis, 8.0)
                 if blink_shape and not blink_shape.IsNull():
                     blink_ais = AIS_Shape(blink_shape)
                     blink_ais.SetColor(Quantity_Color(0.0, 0.8, 0.0, Quantity_TOC_RGB))
@@ -358,36 +474,30 @@ class HoleWindow(QWidget):
             except Exception:
                 pass
 
-            # معلومات الأداة المستخدمة
             if tool:
                 print(f"🪛 Tool used: {tool['name']} | ⌀{tool['diameter']}mm | Feed={tool.get('feedrate','—')}")
 
-            print(f"🧱 Hole applied: axis={axis}, dia={dia}, depth={depth}, at ({x},{y},{z})")
+            print(f"🧱 Hole applied: axis={axis}, dia={dia}, depth={depth}, at ({cx},{cy},{cz})")
 
             # ⛓️ أضف العملية إلى Operation Browser إن وُجد
             try:
                 for w in QApplication.topLevelWidgets():
-                    # نبحث عن نافذة فيها op_browser واسم بروفايل
                     if hasattr(w, "op_browser"):
                         profile_name = getattr(w, "active_profile_name", "Unnamed")
                         try:
-                            # بعض الإصدارات تستخدم add_hole(profile, (x,y,z), dia, depth, axis, tool=?)
-                            w.op_browser.add_hole(profile_name, (x, y, z), dia, depth, axis,
+                            w.op_browser.add_hole(profile_name, (cx, cy, cz), dia, depth, axis,
                                                   tool=(tool["name"] if tool else None))
                             print(f"🕳 [OPS] Added Hole to {profile_name}: "
-                                  f"{{'type':'Hole','x':{x},'y':{y},'z':{z},'dia':{dia},'depth':{depth},'axis':'{axis}'}}")
+                                  f"{{'type':'Hole','x':{cx},'y':{cy},'z':{cz},'dia':{dia},'depth':{depth},'axis':'{axis}'}}")
                         except TypeError:
-                            # دعم النسخ الأقدم التي لا تقبل tool=...
-                            w.op_browser.add_hole(profile_name, (x, y, z), dia, depth, axis)
-                            print(f"🕳 [OPS] Added Hole to {profile_name} (legacy signature).")
+                            w.op_browser.add_hole(profile_name, (cx, cy, cz), dia, depth, axis)
                         break
             except Exception as e:
                 print(f"[OPS] add to browser failed: {e}")
 
-            # 💾 أعد بيانات العملية كذلك
             return {
                 "type": "Hole",
-                "x": x, "y": y, "z": z,
+                "x": cx, "y": cy, "z": cz,
                 "dia": dia, "depth": depth,
                 "axis": axis,
                 "tool": tool["name"] if tool else "Unknown"

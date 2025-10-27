@@ -15,3 +15,4 @@ tomli
 typing_extensions
 unicodedata2
 python 3.10
+https://anaconda.org/jnwalther/pythonocc-core/files

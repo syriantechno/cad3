@@ -157,6 +157,16 @@ def create_profile_manager_page_v2(parent, profile_page_getter=None, stacked_get
             # 🖤 عرض الشكل باللون الأسود وتخزين المرجع
             black = Quantity_Color(0.0, 0.0, 0.0, Quantity_TOC_RGB)
             ais = display.DisplayShape(shape, color=black, update=True)
+
+            # ♻️ إعادة الشبكة والمحاور بشكل محمي
+            try:
+                if hasattr(main_window, "viewer"):
+                    main_window.viewer.refresh_scene()
+                    main_window.viewer.ensure_scene()
+                    print("♻️ [ProfileManager] Viewer scene restored after DXF load")
+            except Exception as e:
+                print(f"⚠️ [ProfileManager] Failed to restore scene: {e}")
+
             if ais:
                 main_window.profile_ais_list.append(ais)
 

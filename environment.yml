@@ -1,0 +1,15 @@
+name: cad3_env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pythonocc-core=7.8.2
+  - pyqt=5
+  - ezdxf
+  - numpy
+  - pillow
+  - pip
+  - pip:
+      - qdarktheme
+      - pyserial
+      - opencamlib

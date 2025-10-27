@@ -1,55 +1,51 @@
 TOPBAR_STYLE = """
 QTabWidget::pane {
-    border: 0;
-    background: #EAEAEA;
+    border: none;
+    background-color: #F1F2F1;
 }
 
 QTabBar::tab {
-    background: #EAEAEA;
-    color: #000000;
-    padding: 0px 5px;
-    margin: 0px;
-    border-radius: 0px;
-    font-size: 13px;
-    min-width: 60px;
-    min-height: 32px;
+    background-color: #F1F2F1;
+    color: #566273;
+    font-weight: 800;
+    padding: 12px 28px;            /* قلّل الpadding العام */
+    margin: 0px;                  /* ألغِ الفراغ بين التبويبات */
+    min-width: 60px;              /* عرض أدنى للتبويبات */
+   
+    border: 1px;
+    border-bottom: 2px solid transparent;
+}
+
+
+QTabBar::tab:hover {
+    border-bottom: 2px solid #E67E22;
 }
 
 QTabBar::tab:selected {
-    border-bottom: 2px solid #3A84FF;
-    background-color: transparent;
-    color: #000000;
+    color: #E67E22;
+    border-bottom: 2px solid #E67E22;
 }
 
-QTabBar::tab:hover {
-    background-color: transparent;
+QTabBar::tab:!selected {
+    color: #566273;
 }
 
 QToolButton {
-    background-color: transparent;
-    color: #000000;
+    background: transparent;
     border: none;
-    border-bottom: 2px solid transparent;
-    padding: 0px;
-    margin: 0px;
-    font-size: 12px;
-    min-height: 48px;
-    min-width: 64px;
-    qproperty-iconSize: 36px;
+    color: #566273;
+    padding: 4px 10px;
 }
 
-QToolButton:hover, QToolButton:pressed {
-    background-color: transparent;
-}
-
-QToolButton:checked {
-    border-bottom: 2px solid #3A84FF;
+QToolButton:hover {
+    color: #E67E22;
 }
 
 QWidget {
-    background-color: #EAEAEA;
+    background-color: #F1F2F1;
 }
 """
+
 DOCK_STYLE = """
 QDockWidget {
     background-color: #EAEAEA;

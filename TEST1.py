@@ -1,0 +1,2 @@
+from OCC.Core.Graphic3d import Graphic3d_HighlightStyle, Graphic3d_TypeOfHighlight
+print(Graphic3d_HighlightStyle, Graphic3d_TypeOfHighlight)

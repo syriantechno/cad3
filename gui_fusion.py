@@ -15,6 +15,7 @@ from frontend.operation_browser import OperationBrowser
 from tools.tool_db import init_db
 from tools.gcode_generator import generate_program, save_program, GCodeSettings
 from dxf_tools import load_dxf_file
+from frontend.fusion_topbar import FusionTopBar
 
 # ✅ استبدلنا العارض الافتراضي بالعارض المستقر الرسمي
 from OCCViewer import OCCViewer
@@ -49,23 +50,33 @@ class AlumCamGUI(QMainWindow):
         except Exception:
             pass
 
+        # ===== الشريط العلوي Fusion =====
+        self.top_bar = FusionTopBar(self)
+        self.setMenuWidget(self.top_bar)  # ← يظهر مباشرة تحت الـ title bar
+
+        # ===== التبويبات =====
+        self.top_tabs = create_topbar_tabs(self)
+
+        # ===== الواجهة الرئيسية =====
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.op_browser)
         splitter.addWidget(self.viewer_widget)
 
-        # ===== Final Layout =====
         main_widget = QWidget()
         main_layout = QVBoxLayout(main_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # ترتيب العرض من الأعلى للأسفل
+        self.top_tabs.setFixedHeight(72)  # 🔹 يحدد ارتفاع التبويبات
+        main_layout.addWidget(self.top_tabs)
         main_layout.addWidget(splitter)
+
         self.setCentralWidget(main_widget)
 
         # ===== Floating tool window =====
         self.tool_dialog, self.show_tool_page = create_tool_window(self)
         self.tool_dialog.hide()
-
-        # ===== Tabs =====
-        top_tabs = create_topbar_tabs(self)
-        self.setMenuWidget(top_tabs)
 
         # ===== Toolbar / Buttons =====
         self.delete_btn = QPushButton("🗑 Delete Operation")
@@ -75,6 +86,7 @@ class AlumCamGUI(QMainWindow):
         self.loaded_shape = None
         self.hole_preview = None
         self.extrude_axis = "Y"
+
 
     # ------------------------------------------------------------------
     def on_generate_from_ops(self, ops_list):

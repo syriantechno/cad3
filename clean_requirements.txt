@@ -16,3 +16,4 @@ typing_extensions
 unicodedata2
 python 3.10
 https://anaconda.org/jnwalther/pythonocc-core/files
+conda install -c conda-forge pythonocc-core=7.9.0

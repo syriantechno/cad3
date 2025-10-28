@@ -176,9 +176,6 @@ class FusionTopBar(QWidget):
         # ---------------------------------------------
         # 🔄 زر تحديث الستايل (Refresh Style Button)
         # ---------------------------------------------
-        from PyQt5.QtWidgets import QApplication
-        import importlib
-        from frontend import style
 
         from PyQt5.QtWidgets import QApplication, QWidget
         import importlib
@@ -202,7 +199,7 @@ class FusionTopBar(QWidget):
         #     except Exception as e:
         #         print(f"⚠️ [Style] خطأ أثناء التحديث: {e}")
 
-        # إنشاء الزر وإضافته بجانب settings
+        # الزر وإضافته بجانب settings#
         refresh_btn = QPushButton("⟳")
         refresh_btn.setFixedSize(28, 28)
         refresh_btn.setToolTip("Reload style.py")

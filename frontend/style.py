@@ -2,23 +2,31 @@ TOPBAR_STYLE = """
 QTabWidget::pane {
     border: none;
     background-color: #F1F2F1;
+    padding-top: 1px;
+     
+}
+
+QTabBar {
+    qproperty-drawBase: 0;
+    margin-left: 6px;
 }
 
 QTabBar::tab {
     background-color: #F1F2F1;
     color: #566273;
-    font-weight: 800;
-    padding: 12px 28px;            /* قلّل الpadding العام */
-    margin: 0px;                  /* ألغِ الفراغ بين التبويبات */
-    min-width: 60px;              /* عرض أدنى للتبويبات */
-   
-    border: 1px;
-    border-bottom: 2px solid transparent;
+    font-weight: 480;
+    font-size: 10pt;
+    padding: 4px 16px;    /* ✅ أصغر توازنًا */
+    margin: 1px 3px;
+    border: none;
+    line-height: 18px;
+    min-width: 70px;
+    min-height: 24px;   /* 🔹 يحدد الارتفاع الأدنى لكل تبويب */
+    padding: 8px 10px;   /* 🔹 يحافظ على المسافات الداخلية المتناسقة */
 }
 
-
 QTabBar::tab:hover {
-    border-bottom: 2px solid #E67E22;
+    color: #E67E22;
 }
 
 QTabBar::tab:selected {
@@ -34,7 +42,8 @@ QToolButton {
     background: transparent;
     border: none;
     color: #566273;
-    padding: 4px 10px;
+    padding: 6px 8px;
+   
 }
 
 QToolButton:hover {
@@ -45,6 +54,8 @@ QWidget {
     background-color: #F1F2F1;
 }
 """
+
+
 
 DOCK_STYLE = """
 QDockWidget {

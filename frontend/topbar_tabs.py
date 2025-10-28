@@ -13,20 +13,30 @@ def create_topbar_tabs(parent):
 
     def create_tab(tab_name, tools):
         tab = QWidget()
-        tab.setMinimumHeight(60)  # ارتفاع Panel فقط
+        tab.setFixedHeight(110)
+        tab.setMinimumHeight(100)  # ارتفاع Panel فقط
         layout = QHBoxLayout(tab)
         layout.setAlignment(Qt.AlignLeft)
         layout.setSpacing(4)
         layout.setContentsMargins(4, 0, 4, 0)
 
-        for icon_path, text, callback, checkable in tools:
+
+        for icon_path, tooltip_text, callback, checkable in tools:
             btn = QToolButton(parent)
             btn.setIcon(QIcon(icon_path))
-            btn.setText(text)
+            #btn.setText(text)
             btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-            btn.setIconSize(QSize(28, 28))
-            btn.setFixedSize(64, 64)
+            tab.setMinimumHeight(10)  # ✅ يعطي مساحة مريحة للنص والأيقونة
+            btn.setIconSize(QSize(48, 48))
+            btn.setFixedSize(48, 48)
             btn.setCheckable(checkable)
+
+            # 🏷️ Tooltip تلقائي
+            if tooltip_text:
+                btn.setToolTip(tooltip_text)
+            else:
+                # في حال ما فيه نص بالـ tuple، نستخدم اسم الملف كخطة احتياطية
+                btn.setToolTip(icon_path.split("/")[-1].replace(".png", ""))
 
             if checkable:
                 # لأزرار Toggle مثل Grid & Axes
@@ -37,20 +47,55 @@ def create_topbar_tabs(parent):
 
             layout.addWidget(btn)
 
+
         tabs.addTab(tab, tab_name)
 
 
-
     # ===== Home Tab =====
-    home_tools = [
-        ("frontend/icons/open.png", "Open File", lambda: open_project_dialog(parent), False),
-        ("frontend/icons/new.png", "New File", lambda: parent.new_file(), False),
-        ("frontend/icons/save.png", "Save File", lambda: parent.save_project(), False),
-        ("frontend/icons/import.png", "Import File", lambda: parent.load_dxf(), False),
-        ("frontend/icons/export.png", "Export File", lambda: parent.export_stl_dialog(), False)
+    # home_tools = [
+    #     ("frontend/icons/open.svg", "Open File", lambda: open_project_dialog(parent), False),
+    #     ("frontend/icons/new.svg", "New File", lambda: parent.new_file(), False),
+    #     ("frontend/icons/save.png", "Save File", lambda: parent.save_project(), False),
+    #     ("frontend/icons/import.png", "Import File", lambda: parent.load_dxf(), False),
+    #     ("frontend/icons/export.png", "Export File", lambda: parent.export_stl_dialog(), False)
+    #
+    # ]
+    # create_tab("Home", home_tools)
+
+    # ===== Sketch Tab =====
+    def safe_call(parent, action):
+        """يستدعي دالة داخل parent بأمان بدون كراش"""
+        try:
+            if hasattr(parent, "sketch_page"):
+                page = parent.sketch_page
+                if action == "draw_circle":
+                    print("[DEBUG] Circle button clicked — calling draw_circle() safely")
+                    parent.sketch_page.set_mode("circle")
+                elif action == "draw_line":
+                    print("[DEBUG] Line button clicked — calling draw_line() safely")
+                    page.draw_line()
+                elif action == "draw_rect":
+                    print("[DEBUG] Rectangle button clicked — calling draw_rect() safely")
+                    page.draw_rect()
+                elif action == "draw_arc":
+                    print("[DEBUG] Arc button clicked — calling draw_arc() safely")
+                    page.draw_arc()
+            else:
+                print(f"⚠️ [SAFE_CALL] parent.sketch_page غير جاهزة بعد")
+        except Exception as e:
+            import traceback
+            print(f"🔥 [SAFE_CALL ERROR] أثناء تنفيذ {action}: {e}")
+            traceback.print_exc()
+
+    sketch_tools = [
+        ("frontend/icons/sketch/stop.png", "Stop", lambda: parent.open_add_profile_page(), False),
+        ("frontend/icons/sketch/circle.png", "Circle", lambda: safe_call(parent, "draw_circle"), False),
+        ("frontend/icons/sketch/rect.png", "Rectangle", lambda: parent.show_tool_page(4), False),
+        ("frontend/icons/sketch/arc.png", "Arc", lambda: parent.show_tool_page(4), False),
 
     ]
-    create_tab("Home", home_tools)
+    create_tab("sketch", sketch_tools)
+
 
     # ===== Profile Tab =====
 

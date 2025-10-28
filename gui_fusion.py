@@ -16,7 +16,7 @@ from tools.tool_db import init_db
 from tools.gcode_generator import generate_program, save_program, GCodeSettings
 from dxf_tools import load_dxf_file
 from frontend.fusion_topbar import FusionTopBar
-
+from tools.sketch_page import SketchPage
 # ✅ استبدلنا العارض الافتراضي بالعارض المستقر الرسمي
 from OCCViewer import OCCViewer
 
@@ -34,6 +34,11 @@ class AlumCamGUI(QMainWindow):
         self.viewer_widget = OCCViewer(self)
         print("🟢 Fusion Viewer ready (using OCCViewer)")
         self.display = self.viewer_widget.display._display
+
+        # ===== Sketch Page =====
+        from tools.sketch_page import SketchPage
+        self.sketch_page = SketchPage(self, viewer=self.viewer_widget)
+        print("🧩 SketchPage linked to viewer:", self.viewer_widget)
 
         self.active_profile_name = None
         self.active_profile_id = None
@@ -57,6 +62,7 @@ class AlumCamGUI(QMainWindow):
         # ===== التبويبات =====
         self.top_tabs = create_topbar_tabs(self)
 
+
         # ===== الواجهة الرئيسية =====
         splitter = QSplitter(Qt.Horizontal)
         splitter.addWidget(self.op_browser)
@@ -68,7 +74,7 @@ class AlumCamGUI(QMainWindow):
         main_layout.setSpacing(0)
 
         # ترتيب العرض من الأعلى للأسفل
-        self.top_tabs.setFixedHeight(72)  # 🔹 يحدد ارتفاع التبويبات
+        self.top_tabs.setFixedHeight(100)  # 🔹 يحدد ارتفاع التبويبات
         main_layout.addWidget(self.top_tabs)
         main_layout.addWidget(splitter)
 
